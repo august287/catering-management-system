@@ -8,6 +8,7 @@ import { Select } from '@/components/ui/Select';
 import { Dialog } from '@/components/ui/Dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { Badge } from '@/components/ui/Badge';
+import { ConfirmationModal } from '@/components/ui/Modal';
 import { useCateringData } from '@/hooks/useCateringData';
 import { formatCurrency } from '@/lib/utils';
 import { MenuItem, Package, EventTheme, RentalItem } from '@/types/database';
@@ -65,6 +66,10 @@ export function MenuManagement() {
     stock_quantity: 50,
     is_available: true,
   });
+
+  // Delete Confirmation States
+  const [itemToDelete, setItemToDelete] = useState<number | null>(null);
+  const [packageToDelete, setPackageToDelete] = useState<number | null>(null);
 
   // --- Handlers for Menu Items ---
   const handleOpenItemDialog = (item?: MenuItem) => {
@@ -343,7 +348,7 @@ export function MenuManagement() {
                                 <Edit className="h-4 w-4" />
                               </button>
                               <button
-                                onClick={() => deleteMenuItem(item.id)}
+                                onClick={() => setItemToDelete(item.id)}
                                 className="rounded p-1.5 text-text-muted hover:bg-red-50 hover:text-red-600 transition-colors"
                               >
                                 <Trash2 className="h-4 w-4" />
@@ -397,7 +402,7 @@ export function MenuManagement() {
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => deletePackage(pkg.id)}
+                      onClick={() => setPackageToDelete(pkg.id)}
                       className="gap-1 text-xs"
                     >
                       <Trash2 className="h-3.5 w-3.5" /> Delete
@@ -732,6 +737,37 @@ export function MenuManagement() {
           </div>
         </form>
       </Dialog>
+
+      {/* Confirmation Modals */}
+      <ConfirmationModal
+        open={itemToDelete !== null}
+        onOpenChange={(open) => !open && setItemToDelete(null)}
+        onConfirm={() => {
+          if (itemToDelete !== null) {
+            deleteMenuItem(itemToDelete);
+            setItemToDelete(null);
+          }
+        }}
+        variant="danger"
+        title="Delete Dish / Food Item"
+        description="Are you sure you want to remove this dish? It will no longer be available for catering packages."
+        confirmLabel="Delete Item"
+      />
+
+      <ConfirmationModal
+        open={packageToDelete !== null}
+        onOpenChange={(open) => !open && setPackageToDelete(null)}
+        onConfirm={() => {
+          if (packageToDelete !== null) {
+            deletePackage(packageToDelete);
+            setPackageToDelete(null);
+          }
+        }}
+        variant="danger"
+        title="Delete Catering Package"
+        description="Are you sure you want to remove this package? It will no longer be available for booking."
+        confirmLabel="Delete Package"
+      />
     </div>
   );
 }

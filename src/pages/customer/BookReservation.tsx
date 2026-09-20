@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { Badge } from '@/components/ui/Badge';
+import { ConfirmationModal } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useCateringData } from '@/hooks/useCateringData';
 import { formatCurrency } from '@/lib/utils';
@@ -41,14 +42,25 @@ export function BookReservation() {
   // Rental quantities: { [rental_item_id]: quantity }
   const [selectedRentals, setSelectedRentals] = useState<Record<number, number>>({});
 
+  // Today's date formatted as YYYY-MM-DD in local time
+  const getTodayDateString = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  const today = getTodayDateString();
+
   // Event details
-  const [eventDate, setEventDate] = useState<string>('2026-11-15');
+  const [eventDate, setEventDate] = useState<string>('');
   const [eventTime, setEventTime] = useState<string>('16:00');
   const [venueAddress, setVenueAddress] = useState<string>('');
   const [specialRequests, setSpecialRequests] = useState<string>('');
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const selectedTheme = themes.find(t => t.id === themeId);
   const selectedPackage = packages.find(p => p.id === packageId);
@@ -91,6 +103,10 @@ export function BookReservation() {
     } else if (step === 3) {
       if (!eventDate) {
         setErrorMessage('Please pick an event date.');
+        return;
+      }
+      if (eventDate <= today) {
+        setErrorMessage('Event date must be a future date. You cannot book for today or a past date.');
         return;
       }
       if (!venueAddress.trim()) {
@@ -339,6 +355,7 @@ export function BookReservation() {
                 <Input
                   type="date"
                   required
+                  min={today}
                   value={eventDate}
                   onChange={e => setEventDate(e.target.value)}
                 />
@@ -502,7 +519,7 @@ export function BookReservation() {
           <Button
             type="button"
             variant="gold"
-            onClick={handleSubmitBooking}
+            onClick={() => setShowConfirm(true)}
             disabled={submitting}
             className="gap-1.5 text-sm h-11 px-6 shadow-md"
           >
@@ -510,6 +527,20 @@ export function BookReservation() {
           </Button>
         )}
       </div>
+
+      <ConfirmationModal
+        open={showConfirm}
+        onOpenChange={setShowConfirm}
+        onConfirm={() => {
+          setShowConfirm(false);
+          handleSubmitBooking();
+        }}
+        variant="success"
+        title="Submit Booking Request"
+        description={`Are you sure you want to finalize this booking for ${formatCurrency(grandTotal)}? You will need to process the 50% downpayment to secure the date.`}
+        confirmLabel="Confirm Booking"
+        loading={submitting}
+      />
     </div>
   );
 }

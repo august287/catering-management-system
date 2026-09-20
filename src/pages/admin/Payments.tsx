@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Dialog } from '@/components/ui/Dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/Tabs';
+import { ConfirmationModal } from '@/components/ui/Modal';
 import { useCateringData } from '@/hooks/useCateringData';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Payment } from '@/types/database';
@@ -16,6 +17,8 @@ export function Payments() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProof, setSelectedProof] = useState<Payment | null>(null);
   const [proofModalOpen, setProofModalOpen] = useState(false);
+
+  const [paymentAction, setPaymentAction] = useState<{ id: number; status: 'verified' | 'rejected' } | null>(null);
 
   const filteredPayments = payments.filter(pay => {
     const res = reservations.find(r => r.id === pay.reservation_id);
@@ -154,7 +157,7 @@ export function Payments() {
                                 <Button
                                   variant="gold"
                                   size="sm"
-                                  onClick={() => handleVerify(pay.id, 'verified')}
+                                  onClick={() => setPaymentAction({ id: pay.id, status: 'verified' })}
                                   className="h-8 px-2 text-xs"
                                   title="Approve & Verify"
                                 >
@@ -163,7 +166,7 @@ export function Payments() {
                                 <Button
                                   variant="destructive"
                                   size="sm"
-                                  onClick={() => handleVerify(pay.id, 'rejected')}
+                                  onClick={() => setPaymentAction({ id: pay.id, status: 'rejected' })}
                                   className="h-8 px-2 text-xs"
                                   title="Reject Payment"
                                 >
@@ -235,6 +238,7 @@ export function Payments() {
                   variant="destructive"
                   onClick={() => {
                     handleVerify(selectedProof.id, 'rejected');
+                    setPaymentAction({ id: selectedProof.id, status: 'rejected' });
                     setProofModalOpen(false);
                   }}
                   className="gap-1.5 text-xs"
@@ -245,6 +249,7 @@ export function Payments() {
                   variant="gold"
                   onClick={() => {
                     handleVerify(selectedProof.id, 'verified');
+                    setPaymentAction({ id: selectedProof.id, status: 'verified' });
                     setProofModalOpen(false);
                   }}
                   className="gap-1.5 text-xs"
@@ -256,6 +261,26 @@ export function Payments() {
           </div>
         </Dialog>
       )}
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        open={paymentAction !== null}
+        onOpenChange={(open) => !open && setPaymentAction(null)}
+        onConfirm={() => {
+          if (paymentAction) {
+            handleVerify(paymentAction.id, paymentAction.status);
+            setPaymentAction(null);
+          }
+        }}
+        variant={paymentAction?.status === 'verified' ? 'success' : 'danger'}
+        title={paymentAction?.status === 'verified' ? 'Verify Payment' : 'Reject Payment'}
+        description={
+          paymentAction?.status === 'verified'
+            ? 'Are you sure you want to verify this payment? It will be credited to the reservation.'
+            : 'Are you sure you want to reject this payment? The customer will be notified to submit again.'
+        }
+        confirmLabel={paymentAction?.status === 'verified' ? 'Verify' : 'Reject'}
+      />
     </div>
   );
 }

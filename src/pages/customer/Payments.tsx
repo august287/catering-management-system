@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
+import { ConfirmationModal } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useCateringData } from '@/hooks/useCateringData';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -35,6 +36,7 @@ export function Payments() {
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [showConfirm, setShowConfirm] = useState(false);
 
   // Update default suggested amount when reservation or payment type changes
   useEffect(() => {
@@ -62,7 +64,7 @@ export function Payments() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setSuccessMessage('');
     setErrorMessage('');
@@ -80,6 +82,11 @@ export function Payments() {
       return;
     }
 
+    setShowConfirm(true);
+  };
+
+  const confirmPayment = async () => {
+    setShowConfirm(false);
     setSubmitting(true);
     try {
       await submitPayment({
@@ -358,8 +365,19 @@ export function Payments() {
           </div>
         </CardContent>
       </Card>
+
+      <ConfirmationModal
+        open={showConfirm}
+        onOpenChange={setShowConfirm}
+        onConfirm={confirmPayment}
+        variant="info"
+        title="Submit Payment Details"
+        description={`Are you sure you want to submit a payment of ${formatCurrency(amount)} with reference number ${referenceNumber}?`}
+        confirmLabel="Submit Payment"
+        loading={submitting}
+      />
     </div>
   );
-}
+  }
 
 export default Payments;
