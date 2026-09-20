@@ -53,9 +53,10 @@ export function RevenueAreaChart({ data }: { data: RevenuePoint[] }) {
               backgroundColor: '#17140f',
               borderColor: '#2a2620',
               borderRadius: '8px',
-              color: '#faf8f4',
-              fontSize: '12px',
+              padding: '8px 12px',
             }}
+            labelStyle={{ color: '#a9822f', fontSize: '12px', fontWeight: 600 }}
+            itemStyle={{ color: '#a9822f', fontSize: '12px' }}
           />
           <Area
             type="monotone"
@@ -83,13 +84,30 @@ export function EventsDonutChart({ data }: { data: EventTypePoint[] }) {
       <ResponsiveContainer width="100%" height="75%">
         <PieChart>
           <Tooltip
-            formatter={(value: any) => [`${value} bookings`, 'Events']}
-            contentStyle={{
-              backgroundColor: '#17140f',
-              borderColor: '#2a2620',
-              borderRadius: '8px',
-              color: '#faf8f4',
-              fontSize: '12px',
+            content={({ active, payload }) => {
+              if (active && payload && payload.length) {
+                const item = payload[0].payload as EventTypePoint;
+                return (
+                  <div
+                    style={{
+                      backgroundColor: '#17140f',
+                      borderColor: '#2a2620',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      borderWidth: '1px',
+                      borderStyle: 'solid',
+                    }}
+                  >
+                    <p style={{ color: '#a9822f', fontSize: '12px', fontWeight: 600, margin: 0 }}>
+                      {item.name}
+                    </p>
+                    <p style={{ color: '#a9822f', fontSize: '12px', margin: '2px 0 0 0' }}>
+                      {item.value} {item.value === 1 ? 'booking' : 'bookings'}
+                    </p>
+                  </div>
+                );
+              }
+              return null;
             }}
           />
           <Pie
@@ -105,10 +123,10 @@ export function EventsDonutChart({ data }: { data: EventTypePoint[] }) {
           </Pie>
         </PieChart>
       </ResponsiveContainer>
-      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-text-muted mt-2">
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs font-medium mt-2">
         {data.map((item, idx) => (
-          <div key={idx} className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+          <div key={idx} className="flex items-center gap-1.5" style={{ color: '#a9822f' }}>
+            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
             <span>{item.name} ({item.value})</span>
           </div>
         ))}
@@ -147,11 +165,12 @@ export function BookingsBarChart({ data }: { data: BarPoint[] }) {
               backgroundColor: '#17140f',
               borderColor: '#2a2620',
               borderRadius: '8px',
-              color: '#faf8f4',
-              fontSize: '12px',
+              padding: '8px 12px',
             }}
+            labelStyle={{ color: '#a9822f', fontSize: '12px', fontWeight: 600 }}
+            itemStyle={{ color: '#a9822f', fontSize: '12px' }}
           />
-          <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />
+          <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px', color: '#a9822f', fontWeight: 500 }} />
           <Bar dataKey="count" name="Bookings" fill="#a9822f" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -19,6 +19,7 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { useCateringData } from '@/hooks/useCateringData';
 import { cn } from '@/lib/utils';
+import { LogoutModal } from '@/components/ui/Modal';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ interface SidebarProps {
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { role, profile, logout } = useAuth();
   const { notifications, reservations, payments } = useCateringData();
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   // Badge calculations
   const pendingReservationsCount = reservations.filter(r => r.status === 'pending').length;
@@ -52,12 +54,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       icon: CreditCard,
       badge: pendingPaymentsCount > 0 ? pendingPaymentsCount : undefined,
     },
-    {
-      to: '/admin/notifications',
-      label: 'Notifications',
-      icon: Bell,
-      badge: unreadNotificationsCount > 0 ? unreadNotificationsCount : undefined,
-    },
+    
     { to: '/admin/reports', label: 'Reports & Analytics', icon: BarChart3 },
   ];
 
@@ -66,15 +63,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     { to: '/customer/book', label: 'Book Reservation', icon: CalendarPlus },
     { to: '/customer/reservations', label: 'My Reservations', icon: Clock },
     { to: '/customer/payments', label: 'Payments', icon: CreditCard },
-    {
-      to: '/customer/notifications',
-      label: 'Notifications',
-      icon: Bell,
-      badge: unreadNotificationsCount > 0 ? unreadNotificationsCount : undefined,
-    },
   ];
 
   const navItems = role === 'admin' ? adminNav : customerNav;
+
+  const handleLogoutConfirm = async () => {
+    await logout();
+    setShowLogoutModal(false);
+  };
 
   return (
     <>
@@ -166,7 +162,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               </div>
             </div>
             <button
-              onClick={() => logout()}
+              onClick={() => setShowLogoutModal(true)}
               title="Sign out"
               className="rounded p-1.5 text-cream/60 hover:bg-ink hover:text-red-400 transition-colors"
             >
@@ -175,6 +171,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </div>
         </div>
       </aside>
+
+      <LogoutModal
+        open={showLogoutModal}
+        onOpenChange={setShowLogoutModal}
+        onConfirm={handleLogoutConfirm}
+      />
     </>
   );
 }

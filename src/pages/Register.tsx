@@ -3,7 +3,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Utensils, AlertCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
+import logo from '/public/images/natalielogo.jpg';
 
 export function Register() {
   const [name, setName] = useState('');
@@ -13,7 +14,6 @@ export function Register() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-
   const { register } = useAuth();
   const navigate = useNavigate();
 
@@ -21,20 +21,35 @@ export function Register() {
     e.preventDefault();
     setError('');
 
-    if (!name.trim()) {
-      setError('Please provide your full name.');
+    // Name Validation
+    if (!name.trim() || name.trim().length < 2) {
+      setError('Please provide a valid full name (at least 2 characters).');
       return;
     }
-    if (!email.trim() || !password) {
-      setError('Please provide a valid email and password.');
+
+    // Phone Number Validation
+    const phoneNumberPattern = /^09\d{2}-\d{3}-\d{4}$/;
+
+    if (!phone.trim()) {
+      setError('Please provide a contact number.');
       return;
     }
+    if (!phoneNumberPattern.test(phone.trim())) {
+      setError('Please provide a valid phone number in the format: 09XX-XXX-XXXX.');
+      return;
+    }
+
+    // 4. Password Validation
+    const strongRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$/;
+    
+    if (!strongRegex.test(password)) {
+      setError('Password must be at least 8 characters and include an uppercase letter, lowercase letter, number, and special character.');
+      return;
+    }
+
+    // 5. Confirm Password Validation
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
-      return;
-    }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters long.');
       return;
     }
 
@@ -60,8 +75,8 @@ export function Register() {
         }}
       >
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gold text-ink font-bold shadow-md">
-            <Utensils className="h-6 w-6 text-white" />
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gold p-1 shadow-md">
+            <img src={logo} alt="Natalie's Catering" className="h-full w-full object-cover rounded-lg" />
           </div>
           <span className="font-serif text-2xl font-bold tracking-tight text-white">
             Natalie's Catering
@@ -82,9 +97,10 @@ export function Register() {
       {/* Right Form */}
       <div className="flex flex-1 flex-col justify-center px-6 py-12 sm:px-12 lg:px-20 bg-cream">
         <div className="mx-auto w-full max-w-md">
-          <div className="mb-6 flex items-center gap-2.5 lg:hidden">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold text-white font-bold">
-              <Utensils className="h-5 w-5" />
+          {/* Mobile Brand Logo */}
+          <div className="mb-8 flex items-center gap-3 lg:hidden">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gold p-1 shadow-sm">
+              <img src={logo} alt="Natalie's Catering" className="h-full w-full object-cover rounded-lg" />
             </div>
             <span className="font-serif text-xl font-bold text-ink">Natalie's Catering</span>
           </div>
@@ -119,6 +135,7 @@ export function Register() {
               </label>
               <Input
                 type="tel"
+                required
                 value={phone}
                 onChange={e => setPhone(e.target.value)}
                 placeholder="0918-123-4567"
@@ -147,7 +164,7 @@ export function Register() {
                 required
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="At least 6 characters"
+                placeholder="Minimum of 8 characters: A-Z, a-z, 0-9, and a symbol."
               />
             </div>
 
