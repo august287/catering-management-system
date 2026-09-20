@@ -26,6 +26,13 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
+interface NavItem {
+  to: string;
+  label: string;
+  icon: React.ElementType;
+  badge?: number;
+}
+
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { role, profile, logout } = useAuth();
   const { notifications, reservations, payments } = useCateringData();
@@ -38,7 +45,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     n => !n.is_read && (role === 'admin' ? n.user_id === '00000000-0000-0000-0000-000000000001' : n.user_id === profile?.id)
   ).length;
 
-  const adminNav = [
+  const adminNav: NavItem[] = [
     { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/admin/menu', label: 'Menu Management', icon: UtensilsCrossed },
     {
@@ -54,11 +61,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       icon: CreditCard,
       badge: pendingPaymentsCount > 0 ? pendingPaymentsCount : undefined,
     },
-    
     { to: '/admin/reports', label: 'Reports & Analytics', icon: BarChart3 },
   ];
 
-  const customerNav = [
+  const customerNav: NavItem[] = [
     { to: '/customer/menu', label: 'Browse Menu', icon: BookOpen },
     { to: '/customer/book', label: 'Book Reservation', icon: CalendarPlus },
     { to: '/customer/reservations', label: 'My Reservations', icon: Clock },

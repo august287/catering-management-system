@@ -2,9 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
-import { Dialog } from '@/components/ui/Dialog';
-import { Button } from '@/components/ui/Button';
-import { LogOut } from 'lucide-react';
+import { ConfirmationModal } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 
 export function AppShell() {
@@ -72,29 +70,16 @@ export function AppShell() {
       </div>
 
       {/* Logout Confirmation Modal — triggered by browser back button */}
-      <Dialog
+      <ConfirmationModal
         open={showLogoutPrompt}
         onOpenChange={setShowLogoutPrompt}
+        onConfirm={handleLogoutConfirm}
         title="Leaving so soon?"
         description="Pressing the back button will end your current session. Are you sure you want to log out?"
-      >
-        <div className="flex flex-col gap-3 pt-2">
-          <Button
-            variant="gold"
-            className="w-full gap-2"
-            onClick={handleLogoutConfirm}
-          >
-            <LogOut className="h-4 w-4" /> Yes, Log Out
-          </Button>
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={() => setShowLogoutPrompt(false)}
-          >
-            Cancel — Stay Here
-          </Button>
-        </div>
-      </Dialog>
+        confirmLabel="Yes, Log Out"
+        cancelLabel="Cancel — Stay Here"
+        variant="logout"
+      />
     </div>
   );
 }

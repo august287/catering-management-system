@@ -53,11 +53,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (mounted && prof) {
               setProfile(prof as Profile);
               setRole(prof.role as UserRole);
+            } else if (mounted) {
+              const metaRole = (session.user.user_metadata?.role as UserRole) || (session.user.email?.includes('admin') ? 'admin' : 'customer');
+              const metaName = session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User';
+              setProfile({ id: session.user.id, name: metaName, role: metaRole });
+              setRole(metaRole);
             }
           } catch (err) {
             console.warn('Profile fetch failed:', err);
+            if (mounted) {
+              const metaRole = (session.user.user_metadata?.role as UserRole) || (session.user.email?.includes('admin') ? 'admin' : 'customer');
+              const metaName = session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User';
+              setProfile({ id: session.user.id, name: metaName, role: metaRole });
+              setRole(metaRole);
+            }
           }
         } else {
+          // Check local stored session for demo mode fallback
+          const stored = localStorage.getItem('caterpro_demo_session');
+          if (stored) {
+            try {
+              const parsed = JSON.parse(stored);
+              if (parsed?.user && parsed?.profile) {
+                setUser(parsed.user);
+                setProfile(parsed.profile);
+                setRole(parsed.profile.role);
+                if (mounted) setLoading(false);
+                return;
+              }
+            } catch {}
+          }
           setUser(null);
           setProfile(null);
           setRole(null);
@@ -91,25 +116,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       if (isSupabaseConfigured()) {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        if (data.user) {
-          const { data: prof } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', data.user.id)
-            .single();
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+          if (data.user) {
+            const { data: prof } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', data.user.id)
+              .single();
 
-          const userProfile = prof as Profile || {
-            id: data.user.id,
-            name: data.user.user_metadata?.name || 'User',
-            role: (data.user.user_metadata?.role as UserRole) || 'customer',
-          };
+            const userProfile = (prof as Profile) || {
+              id: data.user.id,
+              name: data.user.user_metadata?.name || 'User',
+              role: (data.user.user_metadata?.role as UserRole) || (email.includes('admin') ? 'admin' : 'customer'),
+            };
 
-          setUser({ id: data.user.id, email: data.user.email || email });
-          setProfile(userProfile);
-          setRole(userProfile.role);
-          return { success: true };
+            setUser({ id: data.user.id, email: data.user.email || email });
+            setProfile(userProfile);
+            setRole(userProfile.role);
+            return { success: true };
+          }
+        } catch (sbErr: any) {
+          console.warn('Supabase auth attempt failed, checking demo store:', sbErr.message);
         }
       }
 

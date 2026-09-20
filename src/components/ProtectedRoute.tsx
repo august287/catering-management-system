@@ -27,10 +27,12 @@ export function ProtectedRoute({ children, allowedRole }: ProtectedRouteProps) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (allowedRole && role !== allowedRole) {
+  if (allowedRole && role && role !== allowedRole) {
     // Redirect to proper role portal
     const destination = role === 'admin' ? '/admin/dashboard' : '/customer/menu';
-    return <Navigate to={destination} replace />;
+    if (location.pathname !== destination) {
+      return <Navigate to={destination} replace />;
+    }
   }
 
   return <>{children}</>;

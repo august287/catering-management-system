@@ -17,15 +17,15 @@ import {
 
 export function useCateringData() {
   const supabaseActive = isSupabaseConfigured();
-  const [themes, setThemes] = useState<EventTheme[]>(supabaseActive ? [] : mockStore.getThemes());
-  const [categories, setCategories] = useState<MenuCategory[]>(supabaseActive ? [] : mockStore.getCategories());
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(supabaseActive ? [] : mockStore.getMenuItems());
-  const [packages, setPackages] = useState<Package[]>(supabaseActive ? [] : mockStore.getPackages());
-  const [rentals, setRentals] = useState<RentalItem[]>(supabaseActive ? [] : mockStore.getRentals());
-  const [reservations, setReservations] = useState<Reservation[]>(supabaseActive ? [] : mockStore.getReservations());
-  const [payments, setPayments] = useState<Payment[]>(supabaseActive ? [] : mockStore.getPayments());
-  const [notifications, setNotifications] = useState<Notification[]>(supabaseActive ? [] : mockStore.getNotifications());
-  const [profiles, setProfiles] = useState<Profile[]>(supabaseActive ? [] : mockStore.getProfiles());
+  const [themes, setThemes] = useState<EventTheme[]>(mockStore.getThemes());
+  const [categories, setCategories] = useState<MenuCategory[]>(mockStore.getCategories());
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(mockStore.getMenuItems());
+  const [packages, setPackages] = useState<Package[]>(mockStore.getPackages());
+  const [rentals, setRentals] = useState<RentalItem[]>(mockStore.getRentals());
+  const [reservations, setReservations] = useState<Reservation[]>(mockStore.getReservations());
+  const [payments, setPayments] = useState<Payment[]>(mockStore.getPayments());
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>(mockStore.getProfiles());
   const [loading, setLoading] = useState<boolean>(false);
 
   // Load from Supabase if configured, otherwise rely on mockStore
@@ -67,17 +67,26 @@ export function useCateringData() {
         supabase.from('profiles').select('*'),
       ]);
 
-      if (th) setThemes(th);
-      if (cat) setCategories(cat);
-      if (mi) setMenuItems(mi);
-      if (pkg) setPackages(pkg);
-      if (rent) setRentals(rent);
+      if (th && th.length > 0) setThemes(th);
+      if (cat && cat.length > 0) setCategories(cat);
+      if (mi && mi.length > 0) setMenuItems(mi);
+      if (pkg && pkg.length > 0) setPackages(pkg);
+      if (rent && rent.length > 0) setRentals(rent);
       if (res) setReservations(res as any);
       if (pay) setPayments(pay as any);
       if (notif) setNotifications(notif);
-      if (prof) setProfiles(prof);
+      if (prof && prof.length > 0) setProfiles(prof);
     } catch (err) {
-      console.warn('Supabase fetch error, using local data:', err);
+      console.warn('Supabase fetch error, falling back to local data:', err);
+      setThemes(mockStore.getThemes());
+      setCategories(mockStore.getCategories());
+      setMenuItems(mockStore.getMenuItems());
+      setPackages(mockStore.getPackages());
+      setRentals(mockStore.getRentals());
+      setReservations(mockStore.getReservations());
+      setPayments(mockStore.getPayments());
+      setNotifications(mockStore.getNotifications());
+      setProfiles(mockStore.getProfiles());
     } finally {
       setLoading(false);
     }
@@ -88,8 +97,9 @@ export function useCateringData() {
 
     // Real-time notification sync when Supabase is configured
     if (supabaseActive) {
+      const channelId = 'notif-' + Math.random().toString(36).substring(2, 9);
       const channel = supabase
-        .channel('notifications-realtime')
+        .channel(channelId)
         .on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'notifications' },
