@@ -16,15 +16,16 @@ import {
 } from '@/types/database';
 
 export function useCateringData() {
-  const [themes, setThemes] = useState<EventTheme[]>(mockStore.getThemes());
-  const [categories, setCategories] = useState<MenuCategory[]>(mockStore.getCategories());
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(mockStore.getMenuItems());
-  const [packages, setPackages] = useState<Package[]>(mockStore.getPackages());
-  const [rentals, setRentals] = useState<RentalItem[]>(mockStore.getRentals());
-  const [reservations, setReservations] = useState<Reservation[]>(mockStore.getReservations());
-  const [payments, setPayments] = useState<Payment[]>(mockStore.getPayments());
-  const [notifications, setNotifications] = useState<Notification[]>(mockStore.getNotifications());
-  const [profiles, setProfiles] = useState<Profile[]>(mockStore.getProfiles());
+  const supabaseActive = isSupabaseConfigured();
+  const [themes, setThemes] = useState<EventTheme[]>(supabaseActive ? [] : mockStore.getThemes());
+  const [categories, setCategories] = useState<MenuCategory[]>(supabaseActive ? [] : mockStore.getCategories());
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(supabaseActive ? [] : mockStore.getMenuItems());
+  const [packages, setPackages] = useState<Package[]>(supabaseActive ? [] : mockStore.getPackages());
+  const [rentals, setRentals] = useState<RentalItem[]>(supabaseActive ? [] : mockStore.getRentals());
+  const [reservations, setReservations] = useState<Reservation[]>(supabaseActive ? [] : mockStore.getReservations());
+  const [payments, setPayments] = useState<Payment[]>(supabaseActive ? [] : mockStore.getPayments());
+  const [notifications, setNotifications] = useState<Notification[]>(supabaseActive ? [] : mockStore.getNotifications());
+  const [profiles, setProfiles] = useState<Profile[]>(supabaseActive ? [] : mockStore.getProfiles());
   const [loading, setLoading] = useState<boolean>(false);
 
   // Load from Supabase if configured, otherwise rely on mockStore
@@ -84,7 +85,36 @@ export function useCateringData() {
 
   useEffect(() => {
     refreshData();
-  }, [refreshData]);
+
+    // Real-time notification sync when Supabase is configured
+    if (supabaseActive) {
+      const channel = supabase
+        .channel('notifications-realtime')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'notifications' },
+          (payload) => {
+            const newNotif = payload.new as Notification;
+            setNotifications(prev => [newNotif, ...prev]);
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'notifications' },
+          (payload) => {
+            const updated = payload.new as Notification;
+            setNotifications(prev =>
+              prev.map(n => (n.id === updated.id ? updated : n))
+            );
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [refreshData, supabaseActive]);
 
   // --- Menu Item Actions ---
   const addMenuItem = async (item: Omit<MenuItem, 'id'>) => {

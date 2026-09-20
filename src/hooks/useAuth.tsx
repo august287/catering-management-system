@@ -26,69 +26,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [role, setRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load session
+  // Load session — onAuthStateChange is the single source of truth when Supabase
+  // is configured, so we don't duplicate profile fetching in initializeAuth.
   useEffect(() => {
-    const initializeAuth = async () => {
-      try {
-        if (isSupabaseConfigured()) {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user) {
-            setUser({ id: session.user.id, email: session.user.email || '' });
-            // Fetch profile
+    let mounted = true;
+
+    if (isSupabaseConfigured()) {
+      // Safety timeout: if Supabase is unreachable, stop loading after 5s
+      // so ProtectedRoute can redirect instead of showing an infinite spinner.
+      const timeout = setTimeout(() => {
+        if (mounted) setLoading(false);
+      }, 5000);
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        if (!mounted) return;
+        clearTimeout(timeout);
+
+        if (session?.user) {
+          setUser({ id: session.user.id, email: session.user.email || '' });
+          try {
             const { data: prof } = await supabase
               .from('profiles')
               .select('*')
               .eq('id', session.user.id)
               .single();
-
-            if (prof) {
+            if (mounted && prof) {
               setProfile(prof as Profile);
               setRole(prof.role as UserRole);
             }
-          }
-        } else {
-          // Check local stored session for demo mode
-          const stored = localStorage.getItem('caterpro_demo_session');
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            setUser(parsed.user);
-            setProfile(parsed.profile);
-            setRole(parsed.profile.role);
-          }
-        }
-      } catch (err) {
-        console.warn('Auth initialization fallback:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initializeAuth();
-
-    if (isSupabaseConfigured()) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-        if (session?.user) {
-          setUser({ id: session.user.id, email: session.user.email || '' });
-          const { data: prof } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-          if (prof) {
-            setProfile(prof as Profile);
-            setRole(prof.role as UserRole);
+          } catch (err) {
+            console.warn('Profile fetch failed:', err);
           }
         } else {
           setUser(null);
           setProfile(null);
           setRole(null);
         }
-        setLoading(false);
+        if (mounted) setLoading(false);
       });
 
       return () => {
+        mounted = false;
+        clearTimeout(timeout);
         subscription.unsubscribe();
       };
+    } else {
+      // Demo mode: check local stored session
+      try {
+        const stored = localStorage.getItem('caterpro_demo_session');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          setUser(parsed.user);
+          setProfile(parsed.profile);
+          setRole(parsed.profile.role);
+        }
+      } catch (err) {
+        console.warn('Demo session restore failed:', err);
+      }
+      setLoading(false);
     }
   }, []);
 

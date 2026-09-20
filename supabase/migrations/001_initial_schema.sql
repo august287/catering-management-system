@@ -16,20 +16,26 @@ create table if not exists profiles (
 -- Auto-create profile on signup
 create or replace function handle_new_user() returns trigger as $$
 begin
-  insert into profiles (id, name, role)
+  insert into profiles (id, name, phone, role)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'name', 'New Customer'),
+    new.raw_user_meta_data->>'phone',
     coalesce(new.raw_user_meta_data->>'role', 'customer')
-  );
+  )
+  on conflict (id) do nothing;
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function handle_new_user();
+
+-- Grant so Supabase auth service can execute the trigger
+grant usage on schema public to supabase_auth_admin;
+grant all on table profiles to supabase_auth_admin;
 
 -- 2. Event Themes
 create table if not exists event_themes (
