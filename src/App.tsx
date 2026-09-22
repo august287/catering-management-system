@@ -1,10 +1,11 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from '@/hooks/useAuth';
+import { AuthProvider } from '@/hooks/useAuth';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import AppShell from '@/components/layout/AppShell';
 
-// Auth Pages
+// Landing & Auth Pages
+import LandingPage from '@/pages/LandingPage';
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 
@@ -25,14 +26,6 @@ import CustomerMyReservations from '@/pages/customer/MyReservations';
 import CustomerPayments from '@/pages/customer/Payments';
 import CustomerNotifications from '@/pages/customer/Notifications';
 
-// Root redirect handler based on current user session
-function RootRedirect() {
-  const { user, role, loading } = useAuth();
-  if (loading) return null;
-  if (!user) return <Navigate to="/login" replace />;
-  return <Navigate to={role === 'admin' ? '/admin/dashboard' : '/customer/menu'} replace />;
-}
-
 export function App() {
   return (
     <AuthProvider>
@@ -42,8 +35,8 @@ export function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* Root redirect */}
-          <Route path="/" element={<RootRedirect />} />
+          {/* Root Landing Page */}
+          <Route path="/" element={<LandingPage />} />
 
           {/* Admin Protected Subsystem */}
           <Route
