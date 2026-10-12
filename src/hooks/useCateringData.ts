@@ -133,7 +133,25 @@ export function useCateringData() {
     setMenuItems(updated);
     mockStore.saveMenuItems(updated);
     if (isSupabaseConfigured()) {
-      await supabase.from('menu_items').insert(item);
+      const { data, error } = await supabase.from('menu_items').insert(item).select().single();
+      if (error) {
+        setMenuItems(prev => {
+          const next = prev.filter(m => m.id !== newItem.id);
+          mockStore.saveMenuItems(next);
+          return next;
+        });
+        throw new Error(error.message);
+      }
+      if (data) {
+        const reconciled = data as MenuItem;
+        setMenuItems(prev => {
+          const next = prev.map(m => (m.id === newItem.id ? reconciled : m));
+          mockStore.saveMenuItems(next);
+          return next;
+        });
+        newItem.id = reconciled.id;
+        return reconciled;
+      }
     }
     return newItem;
   };
@@ -163,7 +181,25 @@ export function useCateringData() {
     setPackages(updated);
     mockStore.savePackages(updated);
     if (isSupabaseConfigured()) {
-      await supabase.from('packages').insert(pkg);
+      const { data, error } = await supabase.from('packages').insert(pkg).select().single();
+      if (error) {
+        setPackages(prev => {
+          const next = prev.filter(p => p.id !== newPkg.id);
+          mockStore.savePackages(next);
+          return next;
+        });
+        throw new Error(error.message);
+      }
+      if (data) {
+        const reconciled = data as Package;
+        setPackages(prev => {
+          const next = prev.map(p => (p.id === newPkg.id ? reconciled : p));
+          mockStore.savePackages(next);
+          return next;
+        });
+        newPkg.id = reconciled.id;
+        return reconciled;
+      }
     }
     return newPkg;
   };
@@ -193,7 +229,25 @@ export function useCateringData() {
     setThemes(updated);
     mockStore.saveThemes(updated);
     if (isSupabaseConfigured()) {
-      await supabase.from('event_themes').insert(theme);
+      const { data, error } = await supabase.from('event_themes').insert(theme).select().single();
+      if (error) {
+        setThemes(prev => {
+          const next = prev.filter(t => t.id !== newTh.id);
+          mockStore.saveThemes(next);
+          return next;
+        });
+        throw new Error(error.message);
+      }
+      if (data) {
+        const reconciled = data as EventTheme;
+        setThemes(prev => {
+          const next = prev.map(t => (t.id === newTh.id ? reconciled : t));
+          mockStore.saveThemes(next);
+          return next;
+        });
+        newTh.id = reconciled.id;
+        return reconciled;
+      }
     }
     return newTh;
   };
@@ -214,7 +268,25 @@ export function useCateringData() {
     setRentals(updated);
     mockStore.saveRentals(updated);
     if (isSupabaseConfigured()) {
-      await supabase.from('rental_items').insert(rental);
+      const { data, error } = await supabase.from('rental_items').insert(rental).select().single();
+      if (error) {
+        setRentals(prev => {
+          const next = prev.filter(r => r.id !== newRent.id);
+          mockStore.saveRentals(next);
+          return next;
+        });
+        throw new Error(error.message);
+      }
+      if (data) {
+        const reconciled = data as RentalItem;
+        setRentals(prev => {
+          const next = prev.map(r => (r.id === newRent.id ? reconciled : r));
+          mockStore.saveRentals(next);
+          return next;
+        });
+        newRent.id = reconciled.id;
+        return reconciled;
+      }
     }
     return newRent;
   };
@@ -282,9 +354,10 @@ export function useCateringData() {
     mockStore.saveReservations(updated);
 
     // Create a notification for admin
+    const adminId = profiles.find(p => p.role === 'admin')?.id || '00000000-0000-0000-0000-000000000001';
     const adminNotif: Notification = {
       id: Date.now(),
-      user_id: '00000000-0000-0000-0000-000000000001',
+      user_id: adminId,
       title: 'New Booking Created',
       message: `Reservation ${booking_code} placed for ${data.guest_count} pax.`,
       is_read: false,
@@ -295,33 +368,97 @@ export function useCateringData() {
     mockStore.saveNotifications(notifs);
 
     if (isSupabaseConfigured()) {
-      const { data: insertedRes } = await supabase
-        .from('reservations')
-        .insert({
-          booking_code,
-          customer_id: data.customer_id,
-          theme_id: data.theme_id,
-          package_id: data.package_id,
-          event_date: data.event_date,
-          event_time: data.event_time,
-          venue_address: data.venue_address,
-          guest_count: data.guest_count,
-          special_requests: data.special_requests,
-          total_amount: data.total_amount,
-          status: 'pending',
-        })
-        .select()
-        .single();
+      let insertedRes: any = null;
+      let insertErr: any = null;
 
-      if (insertedRes && data.rentals && data.rentals.length > 0) {
-        await supabase.from('reservation_rentals').insert(
-          data.rentals.map(r => ({
-            reservation_id: insertedRes.id,
-            rental_item_id: r.rental_item_id,
-            quantity: r.quantity,
-            subtotal: r.subtotal,
-          }))
-        );
+      const attemptInsert = async (codeToUse: string) => {
+        return await supabase
+          .from('reservations')
+          .insert({
+            booking_code: codeToUse,
+            customer_id: data.customer_id,
+            theme_id: data.theme_id,
+            package_id: data.package_id,
+            event_date: data.event_date,
+            event_time: data.event_time,
+            venue_address: data.venue_address,
+            guest_count: data.guest_count,
+            special_requests: data.special_requests,
+            total_amount: data.total_amount,
+            status: 'pending',
+          })
+          .select()
+          .single();
+      };
+
+      const firstAttempt = await attemptInsert(booking_code);
+      insertedRes = firstAttempt.data;
+      insertErr = firstAttempt.error;
+
+      // In case of unique constraint conflict (e.g. concurrent customer booking), retry with unique timestamp code
+      if (
+        insertErr &&
+        (insertErr.code === '23505' ||
+          insertErr.message?.toLowerCase().includes('unique') ||
+          insertErr.message?.toLowerCase().includes('booking_code'))
+      ) {
+        const fallbackCode = `RES-${currentYear}-${Date.now().toString().slice(-4)}${Math.floor(10 + Math.random() * 90)}`;
+        const retryAttempt = await attemptInsert(fallbackCode);
+        insertedRes = retryAttempt.data;
+        insertErr = retryAttempt.error;
+      }
+
+      if (insertErr) {
+        setReservations(prev => {
+          const next = prev.filter(r => r.id !== newResId);
+          mockStore.saveReservations(next);
+          return next;
+        });
+        setNotifications(prev => {
+          const next = prev.filter(n => n.id !== adminNotif.id);
+          mockStore.saveNotifications(next);
+          return next;
+        });
+        throw new Error(insertErr.message);
+      }
+
+      if (insertedRes) {
+        setReservations(prev => {
+          const next = prev.map(r =>
+            r.id === newResId
+              ? { ...r, id: insertedRes.id, booking_code: insertedRes.booking_code }
+              : r
+          );
+          mockStore.saveReservations(next);
+          return next;
+        });
+        newRes.id = insertedRes.id;
+        newRes.booking_code = insertedRes.booking_code;
+
+        if (data.rentals && data.rentals.length > 0) {
+          await supabase.from('reservation_rentals').insert(
+            data.rentals.map(r => ({
+              reservation_id: insertedRes.id,
+              rental_item_id: r.rental_item_id,
+              quantity: r.quantity,
+              subtotal: r.subtotal,
+            }))
+          );
+        }
+      }
+
+      const { data: insertedNotif } = await supabase.from('notifications').insert({
+        user_id: adminNotif.user_id,
+        title: adminNotif.title,
+        message: `Reservation ${insertedRes?.booking_code || booking_code} placed for ${data.guest_count} pax.`,
+      }).select().single();
+
+      if (insertedNotif) {
+        setNotifications(prev => {
+          const next = prev.map(n => (n.id === adminNotif.id ? insertedNotif : n));
+          mockStore.saveNotifications(next);
+          return next;
+        });
       }
     }
 
@@ -347,6 +484,22 @@ export function useCateringData() {
       const notifs = [custNotif, ...notifications];
       setNotifications(notifs);
       mockStore.saveNotifications(notifs);
+
+      if (isSupabaseConfigured()) {
+        const { data: insertedNotif } = await supabase.from('notifications').insert({
+          user_id: custNotif.user_id,
+          title: custNotif.title,
+          message: custNotif.message,
+        }).select().single();
+
+        if (insertedNotif) {
+          setNotifications(prev => {
+            const next = prev.map(n => (n.id === custNotif.id ? insertedNotif : n));
+            mockStore.saveNotifications(next);
+            return next;
+          });
+        }
+      }
     }
 
     if (isSupabaseConfigured()) {
@@ -362,7 +515,48 @@ export function useCateringData() {
     payment_method: 'cash' | 'bank_transfer' | 'gcash' | 'credit_card';
     reference_number?: string;
     proof_image_url?: string;
+    proof_file?: File | null;
   }) => {
+    const targetReservation = reservations.find(r => r.id === data.reservation_id);
+    if (!targetReservation) {
+      throw new Error('Selected reservation does not exist.');
+    }
+    if (targetReservation.status === 'cancelled' || targetReservation.status === 'completed') {
+      throw new Error(`Cannot submit payment for a ${targetReservation.status} reservation.`);
+    }
+
+    let finalProofUrl = data.proof_image_url || '/images/receipt_sample.svg';
+
+    if (isSupabaseConfigured() && data.proof_file) {
+      const fileExt = data.proof_file.name.split('.').pop()?.toLowerCase() || 'png';
+      const authUser = (await supabase.auth.getUser())?.data?.user;
+      const targetUserId = authUser?.id || targetReservation.customer_id;
+      const filePath = `${targetUserId}/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+
+      const { data: uploadData, error: uploadErr } = await supabase.storage
+        .from('payment-proofs')
+        .upload(filePath, data.proof_file, {
+          contentType: data.proof_file.type,
+          upsert: false,
+        });
+
+      if (uploadErr) {
+        console.error('Storage bucket upload failed:', uploadErr);
+        throw new Error(`Receipt upload failed: ${uploadErr.message}`);
+      }
+
+      // Generate signed URL (1-year validity for secure viewing)
+      const { data: signedData, error: signErr } = await supabase.storage
+        .from('payment-proofs')
+        .createSignedUrl(filePath, 60 * 60 * 24 * 365);
+
+      if (signErr || !signedData?.signedUrl) {
+        finalProofUrl = uploadData?.path || filePath;
+      } else {
+        finalProofUrl = signedData.signedUrl;
+      }
+    }
+
     const newPayment: Payment = {
       id: Date.now(),
       reservation_id: data.reservation_id,
@@ -370,11 +564,11 @@ export function useCateringData() {
       payment_type: data.payment_type,
       payment_method: data.payment_method,
       reference_number: data.reference_number || 'REF-' + Date.now(),
-      proof_image_url: data.proof_image_url || '/images/receipt_sample.svg',
+      proof_image_url: finalProofUrl,
       status: 'pending_verification',
       paid_at: new Date().toISOString(),
       verified_at: null,
-      reservation: reservations.find(r => r.id === data.reservation_id),
+      reservation: targetReservation,
     };
 
     const updated = [newPayment, ...payments];
@@ -382,11 +576,12 @@ export function useCateringData() {
     mockStore.savePayments(updated);
 
     // Notify admin
+    const adminId = profiles.find(p => p.role === 'admin')?.id || '00000000-0000-0000-0000-000000000001';
     const adminNotif: Notification = {
       id: Date.now(),
-      user_id: '00000000-0000-0000-0000-000000000001',
+      user_id: adminId,
       title: 'Payment Awaiting Verification',
-      message: `₱${data.amount.toLocaleString()} received via ${data.payment_method.toUpperCase()} for Ref ${data.reference_number}.`,
+      message: `₱${data.amount.toLocaleString()} received via ${data.payment_method.toUpperCase()} for Ref ${data.reference_number || 'N/A'}.`,
       is_read: false,
       created_at: new Date().toISOString(),
     };
@@ -395,15 +590,52 @@ export function useCateringData() {
     mockStore.saveNotifications(notifs);
 
     if (isSupabaseConfigured()) {
-      await supabase.from('payments').insert({
+      const { data: insertedPay, error: insertError } = await supabase.from('payments').insert({
         reservation_id: data.reservation_id,
         amount: data.amount,
         payment_type: data.payment_type,
         payment_method: data.payment_method,
         reference_number: data.reference_number,
-        proof_image_url: data.proof_image_url,
+        proof_image_url: finalProofUrl,
         status: 'pending_verification',
-      });
+      }).select().single();
+
+      if (insertError) {
+        setPayments(prev => {
+          const next = prev.filter(p => p.id !== newPayment.id);
+          mockStore.savePayments(next);
+          return next;
+        });
+        setNotifications(prev => {
+          const next = prev.filter(n => n.id !== adminNotif.id);
+          mockStore.saveNotifications(next);
+          return next;
+        });
+        throw new Error(insertError.message);
+      }
+
+      if (insertedPay) {
+        setPayments(prev => {
+          const next = prev.map(p => (p.id === newPayment.id ? { ...p, id: insertedPay.id } : p));
+          mockStore.savePayments(next);
+          return next;
+        });
+        newPayment.id = insertedPay.id;
+      }
+
+      const { data: insertedNotif } = await supabase.from('notifications').insert({
+        user_id: adminNotif.user_id,
+        title: adminNotif.title,
+        message: adminNotif.message,
+      }).select().single();
+
+      if (insertedNotif) {
+        setNotifications(prev => {
+          const next = prev.map(n => (n.id === adminNotif.id ? insertedNotif : n));
+          mockStore.saveNotifications(next);
+          return next;
+        });
+      }
     }
 
     return newPayment;
@@ -459,6 +691,22 @@ export function useCateringData() {
         const notifs = [custNotif, ...notifications];
         setNotifications(notifs);
         mockStore.saveNotifications(notifs);
+
+        if (isSupabaseConfigured()) {
+          const { data: insertedNotif } = await supabase.from('notifications').insert({
+            user_id: custNotif.user_id,
+            title: custNotif.title,
+            message: custNotif.message,
+          }).select().single();
+
+          if (insertedNotif) {
+            setNotifications(prev => {
+              const next = prev.map(n => (n.id === custNotif.id ? insertedNotif : n));
+              mockStore.saveNotifications(next);
+              return next;
+            });
+          }
+        }
       }
     }
 
@@ -490,7 +738,11 @@ export function useCateringData() {
     setNotifications(updated);
     mockStore.saveNotifications(updated);
     if (isSupabaseConfigured()) {
-      await supabase.from('notifications').update({ is_read: true }).eq('user_id', userId);
+      if (userId === 'all') {
+        await supabase.from('notifications').update({ is_read: true }).gte('id', 0);
+      } else {
+        await supabase.from('notifications').update({ is_read: true }).eq('user_id', userId);
+      }
     }
   };
 

@@ -29,7 +29,7 @@ export function AppShell() {
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [user, location.pathname]);
+  }, [user]);
 
   const handleLogoutConfirm = useCallback(async () => {
     setShowLogoutPrompt(false);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { CreditCard, Upload, CheckCircle2, Clock, AlertCircle, Image as ImageIcon } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -17,51 +17,103 @@ export function Payments() {
   const { profile } = useAuth();
   const { reservations, payments, submitPayment } = useCateringData();
 
-  // Find customer's reservations
-  const myReservations = reservations.filter(
-    r => r.customer_id === profile?.id || (!profile && r.customer_id === '00000000-0000-0000-0000-000000000002')
+  // Find customer's reservations with useMemo to avoid recreating arrays on every render
+  const allCustomerReservations = useMemo(
+    () => reservations.filter(r => r.customer_id === profile?.id),
+    [reservations, profile?.id]
   );
 
-  const preselectedResId = searchParams.get('reservationId')
-    ? Number(searchParams.get('reservationId'))
-    : myReservations[0]?.id || 0;
+  const payableReservations = useMemo(
+    () => allCustomerReservations.filter(r => r.status !== 'cancelled' && r.status !== 'completed'),
+    [allCustomerReservations]
+  );
+
+  const queryResId = Number(searchParams.get('reservationId') || 0);
+  const isQueryPayable = payableReservations.some(r => r.id === queryResId);
+  const isQueryBlocked = queryResId > 0 && !isQueryPayable;
+  const preselectedResId = isQueryPayable ? queryResId : payableReservations[0]?.id || 0;
 
   const [reservationId, setReservationId] = useState<number>(preselectedResId);
   const [amount, setAmount] = useState<number>(0);
+  const [amountUserEdited, setAmountUserEdited] = useState(false);
   const [paymentType, setPaymentType] = useState<PaymentType>('downpayment');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('gcash');
   const [referenceNumber, setReferenceNumber] = useState<string>('');
   const [proofPreview, setProofPreview] = useState<string>('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
 
+  // Sync default selection if reservations load after mount
+  useEffect(() => {
+    if (!reservationId && payableReservations.length > 0) {
+      setReservationId(payableReservations[0].id);
+    }
+  }, [reservationId, payableReservations]);
+
+  // Reset userEdited flag when target booking or payment type changes
+  useEffect(() => {
+    setAmountUserEdited(false);
+  }, [reservationId, paymentType]);
+
   // Update default suggested amount when reservation or payment type changes
   useEffect(() => {
-    const res = myReservations.find(r => r.id === Number(reservationId));
+    if (amountUserEdited) return;
+    const res = payableReservations.find(r => r.id === Number(reservationId));
     if (res) {
       if (paymentType === 'downpayment') {
         setAmount(res.total_amount * 0.5);
       } else if (paymentType === 'full_payment') {
         setAmount(res.total_amount);
       } else {
-        setAmount(res.total_amount * 0.5);
+        // BUG-08: remaining final balance is total minus verified payments
+        const verifiedPaid = payments
+          .filter(p => p.reservation_id === res.id && p.status === 'verified')
+          .reduce((sum, p) => sum + p.amount, 0);
+        setAmount(Math.max(0, res.total_amount - verifiedPaid));
       }
     }
-  }, [reservationId, paymentType, myReservations]);
+  }, [reservationId, paymentType, payableReservations, payments, amountUserEdited]);
 
-  // Handle local file preview
+  // Handle local file preview with BUG-10 validation
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProofPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    setErrorMessage('');
+    if (!file) {
+      setSelectedFile(null);
+      setProofPreview('');
+      return;
     }
+
+    // BUG-10: 5 MB file size limit per storage schema
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMessage('File size exceeds the 5 MB limit. Please select a smaller receipt image.');
+      e.target.value = '';
+      setSelectedFile(null);
+      setProofPreview('');
+      return;
+    }
+
+    // BUG-10: Allowed MIME types per storage schema
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setErrorMessage('Invalid file type. Only JPG, PNG, and WebP images are allowed.');
+      e.target.value = '';
+      setSelectedFile(null);
+      setProofPreview('');
+      return;
+    }
+
+    setSelectedFile(file);
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setProofPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -96,6 +148,7 @@ export function Payments() {
         payment_method: paymentMethod,
         reference_number: referenceNumber,
         proof_image_url: proofPreview || '/images/receipt_sample.svg',
+        proof_file: selectedFile,
       });
 
       setSuccessMessage(
@@ -103,6 +156,7 @@ export function Payments() {
       );
       setReferenceNumber('');
       setProofPreview('');
+      setSelectedFile(null);
     } catch (err: any) {
       setErrorMessage(err.message || 'Payment submission failed.');
     } finally {
@@ -111,7 +165,7 @@ export function Payments() {
   };
 
   // Find customer's payment history
-  const customerReservationIds = myReservations.map(r => r.id);
+  const customerReservationIds = allCustomerReservations.map(r => r.id);
   const myPayments = payments.filter(p => customerReservationIds.includes(p.reservation_id));
 
   return (
@@ -147,20 +201,30 @@ export function Payments() {
               </div>
             )}
 
+            {isQueryBlocked && (
+              <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
+                <span>The requested reservation is either cancelled or completed and cannot accept additional payments.</span>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
                   Select Event Reservation
                 </label>
-                {myReservations.length === 0 ? (
+                {payableReservations.length === 0 ? (
                   <p className="text-xs text-red-600">No active bookings found to submit payment for.</p>
                 ) : (
                   <Select
                     value={reservationId}
-                    onChange={e => setReservationId(Number(e.target.value))}
+                    onChange={e => {
+                      setReservationId(Number(e.target.value));
+                      setAmountUserEdited(false);
+                    }}
                     required
                   >
-                    {myReservations.map(res => (
+                    {payableReservations.map(res => (
                       <option key={res.id} value={res.id}>
                         {res.booking_code} · {formatDate(res.event_date)} (Total: {formatCurrency(res.total_amount)})
                       </option>
@@ -176,7 +240,10 @@ export function Payments() {
                   </label>
                   <Select
                     value={paymentType}
-                    onChange={e => setPaymentType(e.target.value as PaymentType)}
+                    onChange={e => {
+                      setPaymentType(e.target.value as PaymentType);
+                      setAmountUserEdited(false);
+                    }}
                   >
                     <option value="downpayment">50% Initial Downpayment</option>
                     <option value="final_balance">Remaining Final Balance</option>
@@ -209,8 +276,12 @@ export function Payments() {
                     type="number"
                     required
                     min={1}
-                    value={amount}
-                    onChange={e => setAmount(Number(e.target.value))}
+                    value={amount === 0 ? '' : amount}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setAmount(val === '' ? 0 : Number(val));
+                      setAmountUserEdited(true);
+                    }}
                   />
                 </div>
 
@@ -254,7 +325,7 @@ export function Payments() {
               <Button
                 type="submit"
                 variant="gold"
-                disabled={submitting || myReservations.length === 0}
+                disabled={submitting || payableReservations.length === 0}
                 className="w-full h-11 text-sm mt-2"
               >
                 {submitting ? 'Submitting Payment...' : 'Submit Payment for Verification'}

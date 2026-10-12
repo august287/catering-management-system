@@ -79,6 +79,17 @@ interface EventTypePoint {
 }
 
 export function EventsDonutChart({ data }: { data: EventTypePoint[] }) {
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  if (total === 0) {
+    return (
+      <div className="h-[280px] w-full flex flex-col items-center justify-center text-text-muted text-xs">
+        <p>No event theme bookings recorded yet.</p>
+      </div>
+    );
+  }
+
+  const activeSlices = data.filter(d => d.value > 0);
+
   return (
     <div className="h-[280px] w-full flex flex-col items-center justify-center">
       <ResponsiveContainer width="100%" height="75%">
@@ -111,13 +122,13 @@ export function EventsDonutChart({ data }: { data: EventTypePoint[] }) {
             }}
           />
           <Pie
-            data={data}
+            data={activeSlices}
             innerRadius={55}
             outerRadius={80}
             paddingAngle={3}
             dataKey="value"
           >
-            {data.map((entry, index) => (
+            {activeSlices.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={entry.color} />
             ))}
           </Pie>

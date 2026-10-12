@@ -22,18 +22,29 @@ export function Reports() {
   const avgOrderValue = activeReservationsCount > 0 ? totalGrossContract / activeReservationsCount : 0;
   const collectionRate = totalGrossContract > 0 ? (totalCollected / totalGrossContract) * 100 : 0;
 
-  // Monthly Revenue Trend
-  const monthlyData = [
-    { month: 'Jan', revenue: 150000 },
-    { month: 'Feb', revenue: 120000 },
-    { month: 'Mar', revenue: 165000 },
-    { month: 'Apr', revenue: 230000 },
-    { month: 'May', revenue: 205000 },
-    { month: 'Jun', revenue: 250000 },
-    { month: 'Jul', revenue: 298000 },
-    { month: 'Aug', revenue: 328000 },
-    { month: 'Sep', revenue: totalCollected > 0 ? totalCollected : 395000 },
+  // Monthly Revenue Trend derived from verified payments
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const fullMonthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
   ];
+  const monthlyData = monthNames.map((month, i) => ({
+    month,
+    fullMonth: fullMonthNames[i],
+    revenue: payments
+      .filter(p => p.status === 'verified' && new Date(p.paid_at).getMonth() === i)
+      .reduce((sum, p) => sum + p.amount, 0),
+  }));
+
+  // Dynamic peak month calculation
+  const peakMonthEntry = monthlyData.reduce(
+    (max, cur) => (cur.revenue > max.revenue ? cur : max),
+    monthlyData[0] || { month: 'Dec', fullMonth: 'December', revenue: 0 }
+  );
+  const peakMonthName = peakMonthEntry?.revenue > 0 ? peakMonthEntry.fullMonth : 'December';
+  const peakMonthDesc = peakMonthEntry?.revenue > 0
+    ? `${formatCurrency(peakMonthEntry.revenue)} verified revenue`
+    : 'Projected peak catering season';
 
   // Bookings by Theme Donut
   const themeDistribution = themes.map(th => {
@@ -48,7 +59,7 @@ export function Reports() {
     };
     return {
       name: th.name,
-      value: count || 1,
+      value: count,
       color: colors[th.id] || '#6b6459',
     };
   });
@@ -135,8 +146,8 @@ export function Reports() {
             <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
               Peak Catering Month
             </span>
-            <div className="mt-2 font-serif text-2xl font-bold text-ink">December</div>
-            <p className="mt-1 text-xs text-text-muted">Holiday & wedding season surge</p>
+            <div className="mt-2 font-serif text-2xl font-bold text-ink">{peakMonthName}</div>
+            <p className="mt-1 text-xs text-text-muted">{peakMonthDesc}</p>
           </CardContent>
         </Card>
       </div>

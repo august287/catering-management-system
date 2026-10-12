@@ -23,7 +23,7 @@ export function MyReservations() {
 
   // Filter reservations belonging to this customer
   const myReservations = reservations.filter(
-    r => r.customer_id === profile?.id || (!profile && r.customer_id === '00000000-0000-0000-0000-000000000002')
+    r => r.customer_id === profile?.id
   );
 
   const handleOpenDetails = (res: Reservation) => {
@@ -158,7 +158,7 @@ export function MyReservations() {
                     <Eye className="h-3.5 w-3.5" /> Details
                   </Button>
 
-                  {balanceRemaining > 0 && res.status !== 'cancelled' && (
+                  {balanceRemaining > 0 && res.status !== 'cancelled' && res.status !== 'completed' && (
                     <Link to={`/customer/payments?reservationId=${res.id}`} className="flex-1">
                       <Button variant="gold" size="sm" className="w-full text-xs gap-1">
                         <CreditCard className="h-3.5 w-3.5" /> Submit Payment
@@ -273,7 +273,7 @@ export function MyReservations() {
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
-                {remBalance > 0 && selectedRes.status !== 'cancelled' && (
+                {remBalance > 0 && selectedRes.status !== 'cancelled' && selectedRes.status !== 'completed' && (
                   <Link to={`/customer/payments?reservationId=${selectedRes.id}`}>
                     <Button variant="gold" size="sm" className="text-xs">
                       Submit Payment

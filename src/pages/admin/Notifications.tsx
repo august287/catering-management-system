@@ -6,12 +6,17 @@ import { Badge } from '@/components/ui/Badge';
 import { useCateringData } from '@/hooks/useCateringData';
 import { formatDate } from '@/lib/utils';
 
+import { useAuth } from '@/hooks/useAuth';
+
 export function Notifications() {
   const { notifications, markNotificationAsRead, markAllNotificationsAsRead } = useCateringData();
+  const { profile } = useAuth();
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
 
-  const adminId = '00000000-0000-0000-0000-000000000001';
-  const myAdminNotifs = notifications.filter(n => n.user_id === adminId);
+  const adminId = profile?.id || '00000000-0000-0000-0000-000000000001';
+  const myAdminNotifs = notifications.filter(
+    n => n.user_id === adminId || n.user_id === '00000000-0000-0000-0000-000000000001'
+  );
   const adminNotifs = myAdminNotifs.filter(n =>
     filter === 'unread' ? !n.is_read : true
   );
@@ -41,7 +46,12 @@ export function Notifications() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => markAllNotificationsAsRead('00000000-0000-0000-0000-000000000001')}
+            onClick={async () => {
+              await markAllNotificationsAsRead(adminId);
+              if (adminId !== '00000000-0000-0000-0000-000000000001') {
+                await markAllNotificationsAsRead('00000000-0000-0000-0000-000000000001');
+              }
+            }}
             className="gap-1.5 text-xs self-start"
           >
             <CheckCheck className="h-4 w-4 text-gold" /> Mark All as Read

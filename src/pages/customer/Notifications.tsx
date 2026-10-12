@@ -12,8 +12,8 @@ export function Notifications() {
   const { notifications, markNotificationAsRead, markAllNotificationsAsRead } = useCateringData();
 
   // Filter notifications belonging to this customer
-  const currentUserId = profile?.id || '00000000-0000-0000-0000-000000000002';
-  const myNotifications = notifications.filter(n => n.user_id === currentUserId);
+  const currentUserId = profile?.id || '';
+  const myNotifications = profile ? notifications.filter(n => n.user_id === profile.id) : [];
   const unreadCount = myNotifications.filter(n => !n.is_read).length;
 
   const getNotifIcon = (title: string) => {

@@ -12,9 +12,21 @@ export function Login() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   
-  // Security State for Lockout Mechanism
-  const [attempts, setAttempts] = useState(0);
-  const [lockoutTime, setLockoutTime] = useState(0);
+  // Security State for Lockout Mechanism (persisted in sessionStorage across reload)
+  const getStoredLockout = () => {
+    try {
+      const until = Number(sessionStorage.getItem('caterpro_lockout_until') || 0);
+      const remaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+      const storedAttempts = Number(sessionStorage.getItem('caterpro_login_attempts') || 0);
+      return { remaining, storedAttempts };
+    } catch {
+      return { remaining: 0, storedAttempts: 0 };
+    }
+  };
+
+  const initialLockout = getStoredLockout();
+  const [attempts, setAttempts] = useState(initialLockout.storedAttempts);
+  const [lockoutTime, setLockoutTime] = useState(initialLockout.remaining);
   
   const MAX_ATTEMPTS = 5;
   const LOCKOUT_DURATION = 30; // seconds
@@ -26,13 +38,23 @@ export function Login() {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>; 
     if (lockoutTime > 0) {
-      timer = setTimeout(() => setLockoutTime((time) => time - 1), 1000);
-    } else if (lockoutTime === 0 && attempts >= MAX_ATTEMPTS) {
-      setAttempts(0);
-      setError('');
+      timer = setTimeout(() => {
+        setLockoutTime((time) => {
+          const next = time - 1;
+          if (next <= 0) {
+            try {
+              sessionStorage.removeItem('caterpro_lockout_until');
+              sessionStorage.removeItem('caterpro_login_attempts');
+            } catch {}
+            setAttempts(0);
+            setError('');
+          }
+          return next;
+        });
+      }, 1000);
     }
     return () => clearTimeout(timer);
-  }, [lockoutTime, attempts]);
+  }, [lockoutTime]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,8 +72,12 @@ export function Login() {
     setSubmitting(false);
 
     if (result.success) {
-      setAttempts(0); 
-      if (email.includes('admin')) {
+      setAttempts(0);
+      try {
+        sessionStorage.removeItem('caterpro_lockout_until');
+        sessionStorage.removeItem('caterpro_login_attempts');
+      } catch {}
+      if (result.role === 'admin') {
         navigate('/admin/dashboard');
       } else {
         navigate('/customer/menu');
@@ -59,8 +85,15 @@ export function Login() {
     } else {
       const newAttemptCount = attempts + 1;
       setAttempts(newAttemptCount);
+      try {
+        sessionStorage.setItem('caterpro_login_attempts', String(newAttemptCount));
+      } catch {}
 
       if (newAttemptCount >= MAX_ATTEMPTS) {
+        const until = Date.now() + LOCKOUT_DURATION * 1000;
+        try {
+          sessionStorage.setItem('caterpro_lockout_until', String(until));
+        } catch {}
         setLockoutTime(LOCKOUT_DURATION);
         setError(`Too many failed attempts. Please try again in ${LOCKOUT_DURATION} seconds.`);
       } else {
@@ -93,14 +126,14 @@ export function Login() {
       >
         <div className="flex items-center gap-3">
           {/* Logo Container - Sizing fixed */}
-          <a href="/LandingPage" className="absolute top-6 left-6 flex items-center gap-3">
+          <Link to="/" className="absolute top-6 left-6 flex items-center gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gold p-1 shadow-md">
             <img src={logo} alt="Natalie's Catering" className="h-full w-full object-cover rounded-lg" />
           </div>
           <span className="font-serif text-2xl font-bold tracking-tight text-white">
             Natalie's Catering
           </span>
-          </a>
+          </Link>
         </div>
 
         <div className="max-w-md">

@@ -13,8 +13,13 @@ interface AuthContextType {
   profile: Profile | null;
   role: UserRole | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  register: (email: string, password: string, name: string, phone?: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; role?: UserRole; error?: string }>;
+  register: (
+    email: string,
+    password: string,
+    name: string,
+    phone?: string
+  ) => Promise<{ success: boolean; requiresConfirmation?: boolean; message?: string; error?: string }>;
   logout: () => Promise<void>;
 }
 
@@ -54,18 +59,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setProfile(prof as Profile);
               setRole(prof.role as UserRole);
             } else if (mounted) {
-              const metaRole = (session.user.user_metadata?.role as UserRole) || (session.user.email?.includes('admin') ? 'admin' : 'customer');
+              const safeRole: UserRole = session.user.email?.toLowerCase() === 'admin@caterpro.ph' ? 'admin' : 'customer';
               const metaName = session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User';
-              setProfile({ id: session.user.id, name: metaName, role: metaRole });
-              setRole(metaRole);
+              setProfile({ id: session.user.id, name: metaName, role: safeRole });
+              setRole(safeRole);
             }
           } catch (err) {
             console.warn('Profile fetch failed:', err);
             if (mounted) {
-              const metaRole = (session.user.user_metadata?.role as UserRole) || (session.user.email?.includes('admin') ? 'admin' : 'customer');
+              const safeRole: UserRole = session.user.email?.toLowerCase() === 'admin@caterpro.ph' ? 'admin' : 'customer';
               const metaName = session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User';
-              setProfile({ id: session.user.id, name: metaName, role: metaRole });
-              setRole(metaRole);
+              setProfile({ id: session.user.id, name: metaName, role: safeRole });
+              setRole(safeRole);
             }
           }
         } else {
@@ -112,9 +117,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (email: string, password: string): Promise<{ success: boolean; role?: UserRole; error?: string }> => {
     setLoading(true);
     try {
+      const cleanEmail = email.trim().toLowerCase();
       if (isSupabaseConfigured()) {
         try {
           const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -126,16 +132,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .eq('id', data.user.id)
               .single();
 
+            const safeRole: UserRole = (prof?.role as UserRole) || (cleanEmail === 'admin@caterpro.ph' ? 'admin' : 'customer');
             const userProfile = (prof as Profile) || {
               id: data.user.id,
               name: data.user.user_metadata?.name || 'User',
-              role: (data.user.user_metadata?.role as UserRole) || (email.includes('admin') ? 'admin' : 'customer'),
+              role: safeRole,
             };
 
             setUser({ id: data.user.id, email: data.user.email || email });
             setProfile(userProfile);
-            setRole(userProfile.role);
-            return { success: true };
+            setRole(safeRole);
+            return { success: true, role: safeRole };
           }
         } catch (sbErr: any) {
           console.warn('Supabase auth attempt failed, checking demo store:', sbErr.message);
@@ -143,7 +150,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Demo Auth Mode: verify credentials against persistent accounts store
-      const cleanEmail = email.trim().toLowerCase();
       const accounts = mockStore.getAccounts();
       const matchedAccount = accounts.find(
         a => a.email.toLowerCase() === cleanEmail && a.password === password
@@ -151,17 +157,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (matchedAccount) {
         const profiles = mockStore.getProfiles();
-        const prof = profiles.find(p => p.id === matchedAccount.profileId) || {
+        const prof = profiles.find(p => p.id === matchedAccount.profileId);
+        const safeRole: UserRole = (prof?.role as UserRole) || (cleanEmail === 'admin@caterpro.ph' ? 'admin' : 'customer');
+        const activeProf: Profile = prof || {
           id: matchedAccount.profileId,
           name: cleanEmail.split('@')[0],
-          role: (cleanEmail.includes('admin') ? 'admin' : 'customer') as UserRole,
+          role: safeRole,
         };
-        const u = { id: prof.id, email: cleanEmail };
+        const u = { id: activeProf.id, email: cleanEmail };
         setUser(u);
-        setProfile(prof);
-        setRole(prof.role);
-        localStorage.setItem('caterpro_demo_session', JSON.stringify({ user: u, profile: prof }));
-        return { success: true };
+        setProfile(activeProf);
+        setRole(safeRole);
+        localStorage.setItem('caterpro_demo_session', JSON.stringify({ user: u, profile: activeProf }));
+        return { success: true, role: safeRole };
       }
 
       return { success: false, error: 'Incorrect email or password. Please try again.' };
@@ -177,7 +185,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     password: string,
     name: string,
     phone?: string
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{ success: boolean; requiresConfirmation?: boolean; message?: string; error?: string }> => {
     setLoading(true);
     try {
       const cleanEmail = email.trim().toLowerCase();
@@ -191,7 +199,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           },
         });
         if (error) throw error;
-        if (data.user) {
+        if (data.user && data.session) {
           const newProfile: Profile = {
             id: data.user.id,
             name,
@@ -203,6 +211,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setRole('customer');
           return { success: true };
         }
+        if (data.user && !data.session) {
+          return {
+            success: true,
+            requiresConfirmation: true,
+            message: 'Registration successful! Please check your email inbox to confirm your account before signing in.',
+          };
+        }
+        return {
+          success: false,
+          error: 'Registration failed. Could not create account.',
+        };
       }
 
       // Demo registration with duplicate check and persistent account recording

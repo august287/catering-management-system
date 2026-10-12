@@ -13,6 +13,7 @@ export function Register() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
@@ -20,6 +21,7 @@ export function Register() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccessMessage('');
 
     // Name Validation
     if (!name.trim() || name.trim().length < 2) {
@@ -58,7 +60,13 @@ export function Register() {
     setSubmitting(false);
 
     if (result.success) {
-      navigate('/customer/menu');
+      if (result.requiresConfirmation || result.message) {
+        setSuccessMessage(
+          result.message || 'Registration successful! Please check your email inbox to confirm your account.'
+        );
+      } else {
+        navigate('/customer/menu');
+      }
     } else {
       setError(result.error || 'Registration failed. Please try again.');
     }
@@ -75,14 +83,14 @@ export function Register() {
         }}
       >
         <div className="flex items-center gap-3">
-           <a href="/LandingPage" className="absolute top-6 left-6 flex items-center gap-3">
+           <Link to="/" className="absolute top-6 left-6 flex items-center gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gold p-1 shadow-md">
             <img src={logo} alt="Natalie's Catering" className="h-full w-full object-cover rounded-lg" />
           </div>
           <span className="font-serif text-2xl font-bold tracking-tight text-white">
             Natalie's Catering
           </span>
-           </a>
+           </Link>
         </div>
 
         <div className="max-w-md">
@@ -100,7 +108,6 @@ export function Register() {
       <div className="flex flex-1 flex-col justify-center px-6 py-12 sm:px-12 lg:px-20 bg-cream">
         <div className="mx-auto w-full max-w-md">
           {/* Mobile Brand Logo */}
-          <a href="/LandingPage" className="absolute top-6 left-6 flex items-center gap-3"></a>
           <div className="mb-8 flex items-center gap-3 lg:hidden">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gold p-1 shadow-sm">
               <img src={logo} alt="Natalie's Catering" className="h-full w-full object-cover rounded-lg" />
@@ -115,6 +122,17 @@ export function Register() {
             <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>{error}</span>
+            </div>
+          )}
+
+          {successMessage && (
+            <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+              <p className="font-semibold">{successMessage}</p>
+              <div className="mt-3">
+                <Link to="/login" className="font-bold text-emerald-900 underline hover:text-emerald-700">
+                  Proceed to Sign In &rarr;
+                </Link>
+              </div>
             </div>
           )}
 

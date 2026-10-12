@@ -42,7 +42,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pendingReservationsCount = reservations.filter(r => r.status === 'pending').length;
   const pendingPaymentsCount = payments.filter(p => p.status === 'pending_verification').length;
   const unreadNotificationsCount = notifications.filter(
-    n => !n.is_read && (role === 'admin' ? n.user_id === '00000000-0000-0000-0000-000000000001' : n.user_id === profile?.id)
+    n => !n.is_read && (role === 'admin' ? (n.user_id === profile?.id || n.user_id === '00000000-0000-0000-0000-000000000001') : (profile?.id ? n.user_id === profile.id : false))
   ).length;
 
   const adminNav: NavItem[] = [

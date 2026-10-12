@@ -25,6 +25,15 @@ import CustomerBookReservation from '@/pages/customer/BookReservation';
 import CustomerMyReservations from '@/pages/customer/MyReservations';
 import CustomerPayments from '@/pages/customer/Payments';
 import CustomerNotifications from '@/pages/customer/Notifications';
+import { useAuth } from '@/hooks/useAuth';
+
+function LandingOrRedirect() {
+  const { role, loading } = useAuth();
+  if (loading) return null;
+  if (role === 'admin') return <Navigate to="/admin/dashboard" replace />;
+  if (role === 'customer') return <Navigate to="/customer/menu" replace />;
+  return <LandingPage />;
+}
 
 export function App() {
   return (
@@ -36,7 +45,7 @@ export function App() {
           <Route path="/register" element={<Register />} />
 
           {/* Root Landing Page */}
-          <Route path="/" element={<LandingPage />} />
+          <Route path="/" element={<LandingOrRedirect />} />
 
           {/* Admin Protected Subsystem */}
           <Route

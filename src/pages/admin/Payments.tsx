@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, Eye, Search, CreditCard, Image as ImageIcon } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -10,15 +10,51 @@ import { ConfirmationModal } from '@/components/ui/Modal';
 import { useCateringData } from '@/hooks/useCateringData';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Payment } from '@/types/database';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 export function Payments() {
   const { payments, verifyPayment, reservations, profiles } = useCateringData();
   const [activeTab, setActiveTab] = useState('pending');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProof, setSelectedProof] = useState<Payment | null>(null);
+  const [displayProofUrl, setDisplayProofUrl] = useState<string>('');
   const [proofModalOpen, setProofModalOpen] = useState(false);
 
   const [paymentAction, setPaymentAction] = useState<{ id: number; status: 'verified' | 'rejected' } | null>(null);
+
+  // BUG-10: Resolve storage paths to signed URLs for secure admin inspection
+  useEffect(() => {
+    let isMounted = true;
+    if (!selectedProof?.proof_image_url) {
+      setDisplayProofUrl('');
+      return;
+    }
+    const url = selectedProof.proof_image_url;
+    if (url.startsWith('http') || url.startsWith('/') || url.startsWith('data:')) {
+      setDisplayProofUrl(url);
+    } else {
+      if (isSupabaseConfigured()) {
+        supabase.storage
+          .from('payment-proofs')
+          .createSignedUrl(url, 3600)
+          .then(({ data }) => {
+            if (isMounted) {
+              if (data?.signedUrl) {
+                setDisplayProofUrl(data.signedUrl);
+              } else {
+                const { data: pubData } = supabase.storage.from('payment-proofs').getPublicUrl(url);
+                setDisplayProofUrl(pubData?.publicUrl || '/images/receipt_sample.svg');
+              }
+            }
+          });
+      } else {
+        setDisplayProofUrl('/images/receipt_sample.svg');
+      }
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedProof]);
 
   const filteredPayments = payments.filter(pay => {
     const res = reservations.find(r => r.id === pay.reservation_id);
@@ -199,9 +235,12 @@ export function Payments() {
             <div className="rounded-lg border border-border p-2 bg-cream/40 flex items-center justify-center overflow-hidden">
               {selectedProof.proof_image_url ? (
                 <img
-                  src={selectedProof.proof_image_url}
+                  src={displayProofUrl || selectedProof.proof_image_url}
                   alt="Proof of Payment"
                   className="max-h-[350px] w-auto rounded object-contain"
+                  onError={e => {
+                    (e.target as HTMLImageElement).src = '/images/receipt_sample.svg';
+                  }}
                 />
               ) : (
                 <div className="py-12 text-center text-text-muted">
@@ -237,7 +276,6 @@ export function Payments() {
                 <Button
                   variant="destructive"
                   onClick={() => {
-                    handleVerify(selectedProof.id, 'rejected');
                     setPaymentAction({ id: selectedProof.id, status: 'rejected' });
                     setProofModalOpen(false);
                   }}
@@ -248,7 +286,6 @@ export function Payments() {
                 <Button
                   variant="gold"
                   onClick={() => {
-                    handleVerify(selectedProof.id, 'verified');
                     setPaymentAction({ id: selectedProof.id, status: 'verified' });
                     setProofModalOpen(false);
                   }}

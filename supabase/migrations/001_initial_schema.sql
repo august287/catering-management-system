@@ -13,7 +13,7 @@ create table if not exists profiles (
   created_at timestamptz default now()
 );
 
--- Auto-create profile on signup
+-- Auto-create profile on signup (BUG-06: hardcode role to 'customer')
 create or replace function handle_new_user() returns trigger as $$
 begin
   insert into profiles (id, name, phone, role)
@@ -21,7 +21,7 @@ begin
     new.id,
     coalesce(new.raw_user_meta_data->>'name', 'New Customer'),
     new.raw_user_meta_data->>'phone',
-    coalesce(new.raw_user_meta_data->>'role', 'customer')
+    'customer'
   )
   on conflict (id) do nothing;
   return new;
@@ -104,6 +104,24 @@ create table if not exists reservations (
   updated_at timestamptz default now()
 );
 
+-- BUG-01: Booking code sequence & trigger for unique code generation
+create sequence if not exists booking_code_seq start with 16;
+
+create or replace function generate_booking_code()
+returns trigger as $$
+begin
+  if new.booking_code is null or exists (select 1 from reservations where booking_code = new.booking_code) then
+    new.booking_code := 'RES-' || extract(year from now())::text || '-' || lpad(nextval('booking_code_seq')::text, 4, '0');
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists set_booking_code on reservations;
+create trigger set_booking_code
+  before insert on reservations
+  for each row execute function generate_booking_code();
+
 -- 8. Reservation Rentals (junction)
 create table if not exists reservation_rentals (
   id serial primary key,
@@ -164,8 +182,8 @@ create policy "Customers read own reservations" on reservations
 create policy "Customers insert own reservations" on reservations
   for insert with check (customer_id = auth.uid());
 
-create policy "Customers update own reservations" on reservations
-  for update using (customer_id = auth.uid());
+-- BUG-05: Customers must not update reservations directly (prevents tampering with status/amounts)
+-- Status and amount changes are handled strictly via admin verification and payments
 
 create policy "Admins full access reservations" on reservations
   for all using (
@@ -256,11 +274,8 @@ create policy "Users read own notifications" on notifications
 create policy "Users update own notifications" on notifications
   for update using (user_id = auth.uid());
 
-create policy "Admins insert notifications" on notifications
-  for insert with check (
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-    or user_id = auth.uid()
-  );
+create policy "Authenticated insert notifications" on notifications
+  for insert with check (auth.role() = 'authenticated');
 
 -- ==============================================================================
 -- Supabase Storage Bucket Setup

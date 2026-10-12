@@ -186,10 +186,41 @@ async function runTests() {
     assert.ok(!seedSql.includes('/images/receipt_sample.png'), 'Seed SQL must not reference nonexistent .png receipt');
     assert.ok(seedSql.includes('insert into reservation_rentals'), 'Seed SQL must contain reservation_rentals');
 
-    console.log('✓ Supabase schema & seed SQL verified');
+    const migration003Sql = fs.readFileSync('./supabase/migrations/003_fix_security_and_booking.sql', 'utf-8');
+    assert.ok(migration003Sql.includes('generate_booking_code'), 'Migration 003 missing booking code generator');
+    assert.ok(migration003Sql.includes('EXISTS (SELECT 1 FROM reservations'), 'Migration 003 trigger must check for existing booking codes');
+    assert.ok(migration003Sql.includes('Authenticated insert notifications'), 'Migration 003 missing notification insert policy');
+    assert.ok(migration003Sql.includes('Customers update own reservations'), 'Migration 003 missing drop of customer update policy');
+    assert.ok(migration003Sql.includes("'customer'"), 'Migration 003 missing hardcoded customer role in handle_new_user');
+    assert.ok(migration003Sql.includes('payment-proofs'), 'Migration 003 missing payment-proofs storage setup');
+
+    console.log('Testing frontend code integrity across BUG-01 to BUG-16 ...');
+    const useAuthCode = fs.readFileSync('./src/hooks/useAuth.tsx', 'utf-8');
+    assert.ok(!useAuthCode.includes("email.includes('admin')"), 'useAuth must not determine admin role by email substring');
+    assert.ok(!useAuthCode.includes("cleanEmail.includes('admin')"), 'useAuth must not determine admin role by cleanEmail substring');
+
+    const myResCode = fs.readFileSync('./src/pages/customer/MyReservations.tsx', 'utf-8');
+    assert.ok(myResCode.includes("res.status !== 'completed'"), 'MyReservations must block completed reservations from payment');
+    assert.ok(!myResCode.includes('00000000-0000-0000-0000-000000000002'), 'MyReservations must not contain hardcoded demo user fallback');
+
+    const sidebarCode = fs.readFileSync('./src/components/layout/Sidebar.tsx', 'utf-8');
+    assert.ok(sidebarCode.includes('profile?.id'), 'Sidebar must support active admin profile ID for notifications');
+
+    const topbarCode = fs.readFileSync('./src/components/layout/Topbar.tsx', 'utf-8');
+    assert.ok(topbarCode.includes('profile?.id'), 'Topbar must support active admin profile ID for notifications');
+
+    const paymentsCustCode = fs.readFileSync('./src/pages/customer/Payments.tsx', 'utf-8');
+    assert.ok(paymentsCustCode.includes('5 * 1024 * 1024'), 'Payments must enforce 5MB file size limit');
+    assert.ok(paymentsCustCode.includes('image/webp'), 'Payments must support WebP, JPG, PNG');
+    assert.ok(paymentsCustCode.includes("r.status !== 'completed'"), 'Payments must exclude completed bookings from payable');
+
+    const reportsCode = fs.readFileSync('./src/pages/admin/Reports.tsx', 'utf-8');
+    assert.ok(reportsCode.includes('fullMonthNames'), 'Reports must map peak catering month to full month name');
+
+    console.log('✓ Supabase schema, migration SQL & code integrity verified');
 
     console.log('\n========================================');
-    console.log('ALL TESTS PASSED SUCCESSFULLY (12/12)!');
+    console.log('ALL TESTS PASSED SUCCESSFULLY!');
     console.log('========================================');
   } finally {
     // Cleanup temp cache

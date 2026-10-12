@@ -14,7 +14,7 @@ export function Topbar({ title = "Natalie's Catering", onToggleSidebar }: Topbar
   const { notifications } = useCateringData();
 
   const unreadCount = notifications.filter(
-    n => !n.is_read && (role === 'admin' ? n.user_id === '00000000-0000-0000-0000-000000000001' : n.user_id === profile?.id)
+    n => !n.is_read && (role === 'admin' ? (n.user_id === profile?.id || n.user_id === '00000000-0000-0000-0000-000000000001') : (profile?.id ? n.user_id === profile.id : false))
   ).length;
 
   const notifLink = role === 'admin' ? '/admin/notifications' : '/customer/notifications';

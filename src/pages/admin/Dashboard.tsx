@@ -26,18 +26,14 @@ export function Dashboard() {
   const customerProfiles = profiles.filter(p => p.role === 'customer');
   const pendingPayments = payments.filter(p => p.status === 'pending_verification');
 
-  // Revenue chart series (realistic monthly breakdown)
-  const revenueSeries = [
-    { month: 'Jan', revenue: 150000 },
-    { month: 'Feb', revenue: 120000 },
-    { month: 'Mar', revenue: 165000 },
-    { month: 'Apr', revenue: 230000 },
-    { month: 'May', revenue: 205000 },
-    { month: 'Jun', revenue: 250000 },
-    { month: 'Jul', revenue: 298000 },
-    { month: 'Aug', revenue: 328000 },
-    { month: 'Sep', revenue: totalRevenue > 0 ? totalRevenue : 395000 },
-  ];
+  // Monthly revenue trend derived from verified payments
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const revenueSeries = monthNames.map((month, i) => ({
+    month,
+    revenue: payments
+      .filter(p => p.status === 'verified' && new Date(p.paid_at).getMonth() === i)
+      .reduce((sum, p) => sum + p.amount, 0),
+  }));
 
   // Events by theme donut distribution
   const themeDistribution = themes.map(th => {
@@ -52,7 +48,7 @@ export function Dashboard() {
     };
     return {
       name: th.name,
-      value: count || 1,
+      value: count,
       color: colors[th.id] || '#6b6459',
     };
   });
@@ -90,7 +86,7 @@ export function Dashboard() {
         <StatCard
           label="Total Reservations"
           value={totalReservations}
-          meta="+12% this month"
+          meta={`${pendingReservations} awaiting confirmation`}
           icon={CalendarDays}
           tone="gold"
         />
@@ -104,14 +100,14 @@ export function Dashboard() {
         <StatCard
           label="Total Revenue"
           value={formatCurrency(totalRevenue)}
-          meta="+14.2% vs last quarter"
+          meta={`${payments.filter(p => p.status === 'verified').length} verified transactions`}
           icon={TrendingUp}
           tone="green"
         />
         <StatCard
           label="Registered Customers"
           value={customerProfiles.length}
-          meta="High repeat booking rate"
+          meta={`${reservations.length} total client bookings`}
           icon={Users}
           tone="violet"
         />
