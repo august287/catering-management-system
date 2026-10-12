@@ -22,7 +22,7 @@ const services = [
     title: 'Weddings',
     description:
       'Timeless romantic banquet styling with delicate table runners, elegant floral backdrops, and VIP couple dining arrangements.',
-    image: '/images/2 PIC.jpg',
+    image: '/images/wedding.jpg',
   },
   {
     icon: Sparkles,
@@ -36,28 +36,28 @@ const services = [
     title: 'Debut Elegance',
     description:
       'Glamorous 18-roses and 18-candles grand reception, illuminated floral centerpieces, chandelier accents, and plush debutante throne.',
-    image: '/images/1 PIC.jpg',
+    image: '/images/debut.jpg',
   },
   {
     icon: Utensils,
     title: 'Corporate Galas',
     description:
       'Sleek executive banquet setup, podium styling, neat linen presentation, and polished buffet service for conferences and annual galas.',
-    image: '/images/4 PIC.jpg',
+    image: '/images/corpo.jpg',
   },
   {
     icon: Star,
     title: 'Filipino Fiesta',
     description:
       'Warm native bamboo accents, vibrant banner streamers, traditional banana leaf accents, and hearty heirloom banquet service.',
-    image: '/images/3 PIC.jpg',
+    image: '/images/fiesta.jpg',
   },
   {
     icon: Heart,
     title: 'Christening & Dedication',
     description:
       'Soft pastel palettes, delicate cloud balloons, angel wings or carousel backdrop styling, and family-friendly buffet arrangements.',
-    image: '/images/6.jpg',
+    image: '/images/christening.jpg',
   },
 ];
 
@@ -127,7 +127,7 @@ export function LandingPage() {
             </Link>
             <Link to="/register">
               <Button variant="gold" size="sm" className="text-xs sm:text-sm gap-1">
-                Book Now <ArrowRight className="h-3.5 w-3.5" />
+                Sign Up  <ArrowRight className="h-3.5 w-3.5" />
               </Button>
             </Link>
           </div>
@@ -139,7 +139,7 @@ export function LandingPage() {
         className="relative flex min-h-screen items-center justify-center overflow-hidden bg-cover bg-center bg-no-repeat"
         style={{
           backgroundImage:
-            "linear-gradient(rgba(23, 20, 15, 0.60), rgba(23, 20, 15, 0.82)), url('/images/7.jpg')",
+            "linear-gradient(rgba(23, 20, 15, 0.60), rgba(23, 20, 15, 0.82)), url('/images/bday-girl.jpg')",
         }}
       >
         <div className="relative z-10 mx-auto max-w-4xl px-4 text-center sm:px-6">
@@ -385,15 +385,7 @@ export function LandingPage() {
                 >
                   <Facebook className="h-4 w-4" />
                 </a>
-                <a
-                  href="https://instagram.com/nataliescatering"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Instagram"
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-white text-ink hover:border-gold hover:bg-gold/10 hover:text-gold transition-colors"
-                >
-                  <Instagram className="h-4 w-4" />
-                </a>
+          
               </div>
             </Card>
           </div>

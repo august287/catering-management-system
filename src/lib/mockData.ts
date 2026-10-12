@@ -48,7 +48,7 @@ export const INITIAL_THEMES: EventTheme[] = [
     tagline: 'Your perfect day, exquisitely served',
     description:
       'Timeless romantic banquet styling with delicate table runners, elegant floral backdrops, warm fairy lights, and VIP couple dining arrangements.',
-    image_url: '/images/2 PIC.jpg',
+    image_url: '/images/wedding.jpg',
     is_active: true,
   },
   {
@@ -66,7 +66,7 @@ export const INITIAL_THEMES: EventTheme[] = [
     tagline: 'A modern fairytale debutante celebration',
     description:
       'Glamorous 18-roses and 18-candles grand reception, illuminated floral centerpieces, chandelier accents, and plush debutante throne.',
-    image_url: '/images/1 PIC.jpg',
+    image_url: '/images/debut.jpg',
     is_active: true,
   },
   {
@@ -75,7 +75,7 @@ export const INITIAL_THEMES: EventTheme[] = [
     tagline: 'Professional hospitality for distinguished corporate events',
     description:
       'Sleek executive banquet setup, podium styling, neat linen presentation, and polished buffet service for conferences and annual galas.',
-    image_url: '/images/4 PIC.jpg',
+    image_url: '/images/corpo.jpg',
     is_active: true,
   },
   {
@@ -84,7 +84,7 @@ export const INITIAL_THEMES: EventTheme[] = [
     tagline: 'Authentic traditional Pinoy feast for festive gatherings',
     description:
       'Warm native bamboo accents, vibrant banner streamers, traditional banana leaf accents, and hearty heirloom banquet service.',
-    image_url: '/images/3 PIC.jpg',
+    image_url: '/images/fiesta.jpg',
     is_active: true,
   },
   {
@@ -93,7 +93,7 @@ export const INITIAL_THEMES: EventTheme[] = [
     tagline: 'Blessings and joyful memories for the little one',
     description:
       'Soft pastel palettes, delicate cloud balloons, angel wings or carousel backdrop styling, and family-friendly buffet arrangements.',
-    image_url: '/images/6.jpg',
+    image_url: '/images/christening.jpg',
     is_active: true,
   },
 ];

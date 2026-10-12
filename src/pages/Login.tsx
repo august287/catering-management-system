@@ -93,12 +93,14 @@ export function Login() {
       >
         <div className="flex items-center gap-3">
           {/* Logo Container - Sizing fixed */}
+          <a href="/LandingPage" className="absolute top-6 left-6 flex items-center gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gold p-1 shadow-md">
             <img src={logo} alt="Natalie's Catering" className="h-full w-full object-cover rounded-lg" />
           </div>
           <span className="font-serif text-2xl font-bold tracking-tight text-white">
             Natalie's Catering
           </span>
+          </a>
         </div>
 
         <div className="max-w-md">
@@ -108,7 +110,7 @@ export function Login() {
           <div className="mt-6 flex items-center gap-4">
             <div className="h-0.5 w-12 bg-gold" />
             <span className="text-xs uppercase tracking-widest text-cream/75 font-medium">
-              Manila · Taguig · Quezon City · Rizal
+               Brgy. Marinig, Cabuyao City, Laguna
             </span>
           </div>
         </div>

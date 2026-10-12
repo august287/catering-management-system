@@ -75,12 +75,14 @@ export function Register() {
         }}
       >
         <div className="flex items-center gap-3">
+           <a href="/LandingPage" className="absolute top-6 left-6 flex items-center gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gold p-1 shadow-md">
             <img src={logo} alt="Natalie's Catering" className="h-full w-full object-cover rounded-lg" />
           </div>
           <span className="font-serif text-2xl font-bold tracking-tight text-white">
             Natalie's Catering
           </span>
+           </a>
         </div>
 
         <div className="max-w-md">
@@ -98,6 +100,7 @@ export function Register() {
       <div className="flex flex-1 flex-col justify-center px-6 py-12 sm:px-12 lg:px-20 bg-cream">
         <div className="mx-auto w-full max-w-md">
           {/* Mobile Brand Logo */}
+          <a href="/LandingPage" className="absolute top-6 left-6 flex items-center gap-3"></a>
           <div className="mb-8 flex items-center gap-3 lg:hidden">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gold p-1 shadow-sm">
               <img src={logo} alt="Natalie's Catering" className="h-full w-full object-cover rounded-lg" />
