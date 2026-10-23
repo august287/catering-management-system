@@ -243,6 +243,28 @@ async function runTests() {
     const reportsCode = fs.readFileSync('./src/pages/admin/Reports.tsx', 'utf-8');
     assert.ok(reportsCode.includes('fullMonthNames'), 'Reports must map peak catering month to full month name');
 
+    // BUG-A: customers must not be able to change their own role
+    const migration010Sql = fs.readFileSync('./supabase/migrations/010_lock_profile_role.sql', 'utf-8');
+    assert.ok(migration010Sql.includes('new.role is distinct from old.role'), 'Migration 010 must detect role changes');
+    assert.ok(migration010Sql.includes('not public.is_admin()'), 'Migration 010 must only allow admins to change roles');
+    assert.ok(migration010Sql.includes('before update on public.profiles'), 'Migration 010 trigger must run before profile updates');
+
+    // BUG-B: save first, check the result, then notify
+    const dataHookCode = fs.readFileSync('./src/hooks/useCateringData.ts', 'utf-8');
+    const sliceFn = (name, nextName) =>
+      dataHookCode.slice(dataHookCode.indexOf(`const ${name} =`), dataHookCode.indexOf(`const ${nextName} =`));
+    for (const [fn, next, table] of [
+      ['verifyPayment', 'markNotificationAsRead', 'payments'],
+      ['updateReservationStatus', 'submitPayment', 'reservations'],
+    ]) {
+      const body = sliceFn(fn, next);
+      const updateAt = body.search(new RegExp(`from\\('${table}'\\)\\s*\\.update\\(`));
+      const notifyAt = body.indexOf("from('notifications').insert");
+      assert.ok(updateAt !== -1, `${fn} must update ${table}`);
+      assert.ok(notifyAt > updateAt, `${fn} must save the change before notifying the customer`);
+      assert.ok(body.includes('updateError') && body.includes('savedRows.length === 0'), `${fn} must check the update result`);
+    }
+
     console.log('✓ Supabase schema, migration SQL & code integrity verified');
 
     console.log('\n========================================');
