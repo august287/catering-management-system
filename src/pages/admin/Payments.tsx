@@ -26,6 +26,7 @@ export function Payments() {
   const [receiptPayment, setReceiptPayment] = useState<Payment | null>(null);
 
   const [paymentAction, setPaymentAction] = useState<{ id: number; status: 'verified' | 'rejected' } | null>(null);
+  const [actionError, setActionError] = useState('');
 
   // BUG-10: Resolve storage paths to signed URLs for secure admin inspection
   useEffect(() => {
@@ -94,7 +95,13 @@ export function Payments() {
   };
 
   const handleVerify = async (id: number, status: 'verified' | 'rejected') => {
-    await verifyPayment(id, status);
+    setActionError('');
+    try {
+      await verifyPayment(id, status);
+    } catch (err: any) {
+      setActionError(err?.message || 'Could not update the payment. Please try again.');
+      return;
+    }
     if (selectedProof?.id === id) {
       setSelectedProof(prev => (prev ? { ...prev, status } : null));
     }
@@ -125,6 +132,12 @@ export function Payments() {
           </p>
         </div>
       </div>
+
+      {actionError && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {actionError}
+        </div>
+      )}
 
       <div className="space-y-4">
         <Tabs value={activeTab} onValueChange={setActiveTab}>

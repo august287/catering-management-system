@@ -21,6 +21,7 @@ export function Reservations() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRes, setSelectedRes] = useState<Reservation | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [statusError, setStatusError] = useState('');
 
   const filteredReservations = reservations.filter(res => {
     const cust = profiles.find(p => p.id === res.customer_id);
@@ -46,12 +47,19 @@ export function Reservations() {
 
   const handleOpenDetails = (res: Reservation) => {
     setSelectedRes(res);
+    setStatusError('');
     setDetailModalOpen(true);
   };
 
   const handleStatusChange = async (newStatus: ReservationStatus) => {
     if (!selectedRes) return;
-    await updateReservationStatus(selectedRes.id, newStatus);
+    setStatusError('');
+    try {
+      await updateReservationStatus(selectedRes.id, newStatus);
+    } catch (err: any) {
+      setStatusError(err?.message || 'Could not update the reservation. Please try again.');
+      return;
+    }
     setSelectedRes({ ...selectedRes, status: newStatus });
   };
 
@@ -231,6 +239,12 @@ export function Reservations() {
                 </Select>
               </div>
             </div>
+
+            {statusError && (
+              <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+                {statusError}
+              </div>
+            )}
 
             {/* Event Summary Grid */}
             <div className="grid grid-cols-2 gap-4 text-xs">

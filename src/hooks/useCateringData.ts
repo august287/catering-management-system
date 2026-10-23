@@ -507,11 +507,30 @@ export function useCateringData() {
   };
 
   const updateReservationStatus = async (id: number, status: ReservationStatus) => {
-    const updated = reservations.map(r => (r.id === id ? { ...r, status } : r));
-    setReservations(updated);
-    mockStore.saveReservations(updated);
-
     const targetRes = reservations.find(r => r.id === id);
+
+    // Save the change first and only notify the customer once it has stuck.
+    // `.select()` matters: an update blocked by RLS returns no error, just 0 rows.
+    if (isSupabaseConfigured()) {
+      const { data: savedRows, error: updateError } = await supabase
+        .from('reservations')
+        .update({ status })
+        .eq('id', id)
+        .select('id');
+      if (updateError) {
+        throw new Error(`Could not update the reservation: ${updateError.message}`);
+      }
+      if (!savedRows || savedRows.length === 0) {
+        throw new Error('Could not update the reservation: it was not found or you lack permission.');
+      }
+    }
+
+    setReservations(prev => {
+      const next = prev.map(r => (r.id === id ? { ...r, status } : r));
+      mockStore.saveReservations(next);
+      return next;
+    });
+
     if (targetRes) {
       // Customer notification
       const custNotif: Notification = {
@@ -522,9 +541,11 @@ export function useCateringData() {
         is_read: false,
         created_at: new Date().toISOString(),
       };
-      const notifs = [custNotif, ...notifications];
-      setNotifications(notifs);
-      mockStore.saveNotifications(notifs);
+      setNotifications(prev => {
+        const next = [custNotif, ...prev];
+        mockStore.saveNotifications(next);
+        return next;
+      });
 
       if (isSupabaseConfigured()) {
         // Insert without `.select()` so the actor doesn't need SELECT rights on a
@@ -540,10 +561,6 @@ export function useCateringData() {
           await refreshNotifications();
         }
       }
-    }
-
-    if (isSupabaseConfigured()) {
-      await supabase.from('reservations').update({ status }).eq('id', id);
     }
   };
 
@@ -739,79 +756,106 @@ export function useCateringData() {
   };
 
   const verifyPayment = async (id: number, status: PaymentStatus) => {
-    const updated = payments.map(p =>
-      p.id === id
-        ? {
-            ...p,
-            status,
-            verified_at: status === 'verified' ? new Date().toISOString() : null,
-          }
-        : p
-    );
-    setPayments(updated);
-    mockStore.savePayments(updated);
-
     const payment = payments.find(p => p.id === id);
-    if (payment) {
-      const targetRes =
-        payment.reservation || reservations.find(r => r.id === payment.reservation_id);
+    // Ignore repeat clicks on a payment that already has this status, so the
+    // customer isn't sent the same notice twice.
+    if (payment && payment.status === status) return;
 
-      if (targetRes) {
-        // When payment is verified for a pending reservation, confirm the booking
-        if (
-          status === 'verified' &&
-          targetRes.status === 'pending' &&
-          (payment.payment_type === 'downpayment' || payment.payment_type === 'full_payment')
-        ) {
-          const updatedRes = reservations.map(r =>
-            r.id === targetRes.id ? { ...r, status: 'confirmed' as ReservationStatus } : r
+    const verifiedAt = status === 'verified' ? new Date().toISOString() : null;
+    // Prefer the live reservation list; the embedded copy on the payment can be stale.
+    const targetRes = payment
+      ? reservations.find(r => r.id === payment.reservation_id) || payment.reservation
+      : undefined;
+    const shouldConfirmBooking =
+      !!payment &&
+      !!targetRes &&
+      status === 'verified' &&
+      targetRes.status === 'pending' &&
+      (payment.payment_type === 'downpayment' || payment.payment_type === 'full_payment');
+    let bookingConfirmed = shouldConfirmBooking;
+
+    // Save the payment first and only notify the customer once it has stuck.
+    // `.select()` matters: an update blocked by RLS returns no error, just 0 rows.
+    if (isSupabaseConfigured()) {
+      const { data: savedRows, error: updateError } = await supabase
+        .from('payments')
+        .update({ status, verified_at: verifiedAt })
+        .eq('id', id)
+        .select('id');
+      if (updateError) {
+        throw new Error(`Could not update the payment: ${updateError.message}`);
+      }
+      if (!savedRows || savedRows.length === 0) {
+        throw new Error('Could not update the payment: it was not found or you lack permission.');
+      }
+
+      if (shouldConfirmBooking && targetRes) {
+        const { data: resRows, error: resError } = await supabase
+          .from('reservations')
+          .update({ status: 'confirmed' })
+          .eq('id', targetRes.id)
+          .select('id');
+        if (resError || !resRows || resRows.length === 0) {
+          // The payment is saved; don't claim the booking is confirmed.
+          console.error(
+            'Payment verified but booking could not be confirmed:',
+            resError?.message || 'no rows updated'
           );
-          setReservations(updatedRes);
-          mockStore.saveReservations(updatedRes);
-
-          if (isSupabaseConfigured()) {
-            await supabase.from('reservations').update({ status: 'confirmed' }).eq('id', targetRes.id);
-          }
-        }
-
-        const custNotif: Notification = {
-          id: Date.now(),
-          user_id: targetRes.customer_id,
-          title: status === 'verified' ? 'Payment Verified & Booking Confirmed!' : 'Payment Issue Flagged',
-          message:
-            status === 'verified'
-              ? `Your payment of ₱${payment.amount.toLocaleString()} for ${targetRes.booking_code} has been approved.`
-              : `Your payment of ₱${payment.amount.toLocaleString()} for ${targetRes.booking_code} could not be verified. Please check reference details.`,
-          is_read: false,
-          created_at: new Date().toISOString(),
-        };
-        const notifs = [custNotif, ...notifications];
-        setNotifications(notifs);
-        mockStore.saveNotifications(notifs);
-
-        if (isSupabaseConfigured()) {
-          const { error: notifError } = await supabase.from('notifications').insert({
-            user_id: custNotif.user_id,
-            title: custNotif.title,
-            message: custNotif.message,
-          });
-          if (notifError) {
-            console.error('Failed to notify customer of payment verification:', notifError.message);
-          } else {
-            await refreshNotifications();
-          }
+          bookingConfirmed = false;
         }
       }
     }
 
+    setPayments(prev => {
+      const next = prev.map(p => (p.id === id ? { ...p, status, verified_at: verifiedAt } : p));
+      mockStore.savePayments(next);
+      return next;
+    });
+
+    if (bookingConfirmed && targetRes) {
+      setReservations(prev => {
+        const next = prev.map(r =>
+          r.id === targetRes.id ? { ...r, status: 'confirmed' as ReservationStatus } : r
+        );
+        mockStore.saveReservations(next);
+        return next;
+      });
+    }
+
+    if (!payment || !targetRes) return;
+
+    const verifiedTitle =
+      shouldConfirmBooking && !bookingConfirmed
+        ? 'Payment Verified'
+        : 'Payment Verified & Booking Confirmed!';
+    const custNotif: Notification = {
+      id: Date.now(),
+      user_id: targetRes.customer_id,
+      title: status === 'verified' ? verifiedTitle : 'Payment Issue Flagged',
+      message:
+        status === 'verified'
+          ? `Your payment of ₱${payment.amount.toLocaleString()} for ${targetRes.booking_code} has been approved.`
+          : `Your payment of ₱${payment.amount.toLocaleString()} for ${targetRes.booking_code} could not be verified. Please check reference details.`,
+      is_read: false,
+      created_at: new Date().toISOString(),
+    };
+    setNotifications(prev => {
+      const next = [custNotif, ...prev];
+      mockStore.saveNotifications(next);
+      return next;
+    });
+
     if (isSupabaseConfigured()) {
-      await supabase
-        .from('payments')
-        .update({
-          status,
-          verified_at: status === 'verified' ? new Date().toISOString() : null,
-        })
-        .eq('id', id);
+      const { error: notifError } = await supabase.from('notifications').insert({
+        user_id: custNotif.user_id,
+        title: custNotif.title,
+        message: custNotif.message,
+      });
+      if (notifError) {
+        console.error('Failed to notify customer of payment verification:', notifError.message);
+      } else {
+        await refreshNotifications();
+      }
     }
   };
 
