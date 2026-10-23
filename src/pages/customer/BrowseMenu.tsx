@@ -183,27 +183,43 @@ export function BrowseMenu() {
             {filteredFood.map(item => {
               const cat = categories.find(c => c.id === item.category_id);
               return (
-                <Card key={item.id} className="p-5 hover:shadow-card transition-shadow">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <span className="text-[10px] uppercase tracking-wider font-semibold text-gold-dark">
-                        {cat?.name || 'Catering Special'}
-                      </span>
-                      <h4 className="font-serif text-base font-bold text-ink mt-0.5">
-                        {item.name}
-                      </h4>
-                    </div>
-                    <span className="font-serif font-bold text-sm text-ink shrink-0">
-                      {formatCurrency(item.price_per_head)}
-                    </span>
+                <Card key={item.id} className="overflow-hidden hover:shadow-card transition-shadow">
+                  <div className="h-40 w-full bg-cream-dark">
+                    {item.image_url ? (
+                      <img
+                        src={item.image_url}
+                        alt={item.name}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-text-faint">
+                        <Utensils className="h-8 w-8" />
+                      </div>
+                    )}
                   </div>
-                  <p className="mt-2 text-xs text-text-muted leading-relaxed">
-                    {item.description || 'Prepared fresh with native culinary traditions.'}
-                  </p>
-                  <div className="mt-3 flex items-center justify-between pt-2 border-t border-border text-[11px]">
-                    <span className="text-emerald-700 font-medium flex items-center gap-1">
-                      <Check className="h-3 w-3" /> Included in Buffet Packages
-                    </span>
+                  <div className="p-5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="text-[10px] uppercase tracking-wider font-semibold text-gold-dark">
+                          {cat?.name || 'Catering Special'}
+                        </span>
+                        <h4 className="font-serif text-base font-bold text-ink mt-0.5">
+                          {item.name}
+                        </h4>
+                      </div>
+                      <span className="font-serif font-bold text-sm text-ink shrink-0">
+                        {formatCurrency(item.price_per_head)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-text-muted leading-relaxed">
+                      {item.description || 'Prepared fresh with native culinary traditions.'}
+                    </p>
+                    <div className="mt-3 flex items-center justify-between pt-2 border-t border-border text-[11px]">
+                      <span className="text-emerald-700 font-medium flex items-center gap-1">
+                        <Check className="h-3 w-3" /> Included in Buffet Packages
+                      </span>
+                    </div>
                   </div>
                 </Card>
               );

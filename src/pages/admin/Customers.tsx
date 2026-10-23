@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Dialog } from '@/components/ui/Dialog';
 import { useCateringData } from '@/hooks/useCateringData';
+import { usePagination } from '@/hooks/usePagination';
+import { Pagination } from '@/components/ui/Pagination';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Profile, Reservation } from '@/types/database';
 
@@ -15,8 +17,15 @@ export function Customers() {
   const [selectedCustomer, setSelectedCustomer] = useState<Profile | null>(null);
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
-  // Filter only customers
-  const customers = profiles.filter(p => p.role === 'customer');
+  // Filter only customers, newest members first
+  const customers = profiles
+    .filter(p => p.role === 'customer')
+    .sort((a, b) => {
+      const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+      if (bTime !== aTime) return bTime - aTime;
+      return a.name.localeCompare(b.name);
+    });
 
   const filteredCustomers = customers.filter(c => {
     const q = searchQuery.toLowerCase();
@@ -26,6 +35,18 @@ export function Customers() {
       c.id.toLowerCase().includes(q)
     );
   });
+
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    total,
+    totalPages,
+    startIndex,
+    endIndex,
+    paginatedItems: paginatedCustomers,
+  } = usePagination(filteredCustomers, searchQuery);
 
   const handleOpenHistory = (cust: Profile) => {
     setSelectedCustomer(cust);
@@ -50,7 +71,8 @@ export function Customers() {
         <div>
           <h2 className="font-serif text-2xl font-bold text-ink">Customer Directory</h2>
           <p className="text-sm text-text-muted">
-            Manage client profiles, contact information, and event booking histories.
+            Manage client profiles, contact information, and event booking histories. Newest
+            customers are shown first.
           </p>
         </div>
       </div>
@@ -93,7 +115,7 @@ export function Customers() {
                     </td>
                   </tr>
                 ) : (
-                  filteredCustomers.map(cust => {
+                  paginatedCustomers.map(cust => {
                     const stats = getCustomerStats(cust.id);
                     return (
                       <tr key={cust.id} className="hover:bg-cream/40 transition-colors">
@@ -140,6 +162,16 @@ export function Customers() {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </CardContent>
       </Card>
 

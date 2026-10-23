@@ -210,15 +210,51 @@ values
   (26, 6, 'Fresh Calamansi Honey Cooler', 'Zesty freshly-squeezed native calamansi juice with wild forest honey', 65.00, true)
 on conflict (id) do update set name = excluded.name, price_per_head = excluded.price_per_head;
 
+-- Dish photos (keep the column creation here as well so the seed can be run on
+-- an older database without re-running every migration first)
+alter table public.menu_items add column if not exists image_url text;
+
+update public.menu_items as m
+set image_url = v.image_url
+from (values
+  (1, '/images/1 PIC.jpg'),
+  (2, '/images/2 PIC.jpg'),
+  (3, '/images/3 PIC.jpg'),
+  (4, '/images/4 PIC.jpg'),
+  (5, '/images/5.jpg'),
+  (6, '/images/6.jpg'),
+  (7, '/images/7.jpg'),
+  (8, '/images/8.jpg'),
+  (9, '/images/fiesta.jpg'),
+  (10, '/images/corpo.jpg'),
+  (11, '/images/wedding.jpg'),
+  (12, '/images/2 PIC.jpg'),
+  (13, '/images/3 PIC.jpg'),
+  (14, '/images/4 PIC.jpg'),
+  (15, '/images/8.jpg'),
+  (16, '/images/bday-girl.jpg'),
+  (17, '/images/bday-girl-2.jpg'),
+  (18, '/images/5.jpg'),
+  (19, '/images/6.jpg'),
+  (20, '/images/7.jpg'),
+  (21, '/images/debut.jpg'),
+  (22, '/images/christening.jpg'),
+  (23, '/images/fiesta.jpg'),
+  (24, '/images/wedding.jpg'),
+  (25, '/images/corpo.jpg'),
+  (26, '/images/debut.jpg')
+) as v(id, image_url)
+where m.id = v.id;
+
 -- 5. Catering Packages
 insert into packages (id, name, description, price_per_pax, min_pax, theme_id)
 values
-  (1, 'Silver Buffet', '1 Soup, 1 Appetizer, 3 Main Courses (Pork, Chicken, Fish), 1 Noodle, 1 Rice, 1 Dessert, Bottomless Iced Tea. Complete buffet setup with floral arrangement and trained waiters.', 450.00, 50, null),
-  (2, 'Gold Feast', '1 Soup, 2 Appetizers, 4 Main Courses (Beef, Pork, Chicken, Seafood), 1 Noodle, 2 Rice varieties, 2 Desserts, Bottomless Specialty Cooler. Complete themed setup with centerpiece on all guest tables.', 650.00, 50, null),
-  (3, 'Platinum Royal Banquet', 'Full wedding grand reception: 2 Soups, 3 Appetizers, 5 Premium Mains including Roasted Beef Caldereta & Tiger Prawns, 2 Noodles, 3 Gourmet Desserts, Champagne toast, VIP Table service & centerpiece.', 950.00, 80, 1),
-  (4, 'Debutante Special Feast', 'Curated for 18th Birthdays: 2 Appetizers, 4 Main Courses, 1 Pasta/Noodle, Steamed Rice, 2 Desserts, Mocktail fountain, Debutante stage decor and 18-roses arrangement coordination.', 550.00, 60, 3),
-  (5, 'Corporate Lite Executive', 'Tailored for conferences, seminars, and corporate meetings: Quick-serve hot buffet with 3 Mains, 1 Vegetable/Salad, Rice, Dessert, and Fresh Brewed Coffee / Iced Tea station.', 400.00, 30, 4)
-on conflict (id) do update set name = excluded.name, price_per_pax = excluded.price_per_pax;
+  (1, 'Silver Buffet', '1 Soup, 1 Appetizer, 3 Main Courses (Pork, Chicken, Fish), 1 Noodle, 1 Rice, 1 Dessert, Bottomless Iced Tea. Complete buffet setup with floral arrangement and trained waiters.', 450.00, 100, null),
+  (2, 'Gold Feast', '1 Soup, 2 Appetizers, 4 Main Courses (Beef, Pork, Chicken, Seafood), 1 Noodle, 2 Rice varieties, 2 Desserts, Bottomless Specialty Cooler. Complete themed setup with centerpiece on all guest tables.', 650.00, 100, null),
+  (3, 'Platinum Royal Banquet', 'Full wedding grand reception: 2 Soups, 3 Appetizers, 5 Premium Mains including Roasted Beef Caldereta & Tiger Prawns, 2 Noodles, 3 Gourmet Desserts, Champagne toast, VIP Table service & centerpiece.', 950.00, 100, 1),
+  (4, 'Debutante Special Feast', 'Curated for 18th Birthdays: 2 Appetizers, 4 Main Courses, 1 Pasta/Noodle, Steamed Rice, 2 Desserts, Mocktail fountain, Debutante stage decor and 18-roses arrangement coordination.', 550.00, 100, 3),
+  (5, 'Corporate Lite Executive', 'Tailored for conferences, seminars, and corporate meetings: Quick-serve hot buffet with 3 Mains, 1 Vegetable/Salad, Rice, Dessert, and Fresh Brewed Coffee / Iced Tea station.', 400.00, 100, 4)
+on conflict (id) do update set name = excluded.name, price_per_pax = excluded.price_per_pax, min_pax = excluded.min_pax;
 
 -- 6. Rental Items
 insert into rental_items (id, name, category, rate_per_unit, stock_quantity, is_available)
@@ -291,3 +327,62 @@ values
   (5, '00000000-0000-0000-0000-000000000002', 'Downpayment Received', 'Thank you! Downpayment of ₱71,250.00 for RES-2026-0001 is verified.', true, now() - interval '12 days'),
   (6, '00000000-0000-0000-0000-000000000003', 'Birthday Booking Confirmed', 'Your booking RES-2026-0002 for 80 pax at San Antonio Clubhouse is confirmed.', true, now() - interval '8 days')
 on conflict (id) do nothing;
+
+-- ==============================================================================
+-- 11. Guest count policy: 100-200 pax per booking
+-- Existing demo reservations may fall outside this range, so the reservations
+-- constraint is added NOT VALID; it still applies to every new insert/update.
+-- ==============================================================================
+alter table public.reservations
+  drop constraint if exists reservations_guest_count_range;
+alter table public.reservations
+  add constraint reservations_guest_count_range
+  check (guest_count between 100 and 200) not valid;
+
+update public.packages
+set min_pax = least(greatest(coalesce(min_pax, 100), 100), 200);
+
+alter table public.packages
+  alter column min_pax set default 100;
+alter table public.packages
+  drop constraint if exists packages_min_pax_range;
+alter table public.packages
+  add constraint packages_min_pax_range
+  check (min_pax between 100 and 200);
+
+-- ==============================================================================
+-- 12. Resync serial sequences after explicit-id inserts
+-- Explicit ids above do NOT advance the serial sequences, so the next app insert
+-- would reuse id 1 and fail with "duplicate key value violates unique constraint
+-- <table>_pkey". Keep this block at the very end of the seed file.
+-- ==============================================================================
+select setval(pg_get_serial_sequence('public.event_themes', 'id'),
+              coalesce(max(id), 1), max(id) is not null) from public.event_themes;
+select setval(pg_get_serial_sequence('public.menu_categories', 'id'),
+              coalesce(max(id), 1), max(id) is not null) from public.menu_categories;
+select setval(pg_get_serial_sequence('public.menu_items', 'id'),
+              coalesce(max(id), 1), max(id) is not null) from public.menu_items;
+select setval(pg_get_serial_sequence('public.packages', 'id'),
+              coalesce(max(id), 1), max(id) is not null) from public.packages;
+select setval(pg_get_serial_sequence('public.rental_items', 'id'),
+              coalesce(max(id), 1), max(id) is not null) from public.rental_items;
+select setval(pg_get_serial_sequence('public.reservations', 'id'),
+              coalesce(max(id), 1), max(id) is not null) from public.reservations;
+select setval(pg_get_serial_sequence('public.reservation_rentals', 'id'),
+              coalesce(max(id), 1), max(id) is not null) from public.reservation_rentals;
+select setval(pg_get_serial_sequence('public.payments', 'id'),
+              coalesce(max(id), 1), max(id) is not null) from public.payments;
+select setval(pg_get_serial_sequence('public.notifications', 'id'),
+              coalesce(max(id), 1), max(id) is not null) from public.notifications;
+
+-- Keep the booking-code sequence ahead of every seeded code so the
+-- set_booking_code trigger never generates a duplicate booking_code.
+select setval('public.booking_code_seq',
+              greatest(
+                coalesce((
+                  select max((regexp_replace(booking_code, '^RES-\d{4}-', ''))::int)
+                  from public.reservations
+                ), 0),
+                15
+              ) + 1,
+              false);

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Edit, Trash2, CheckCircle2, XCircle, Search } from 'lucide-react';
+import { Plus, Edit, Trash2, CheckCircle2, XCircle, Search, Image as ImageIcon, Upload } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -10,7 +10,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { Badge } from '@/components/ui/Badge';
 import { ConfirmationModal } from '@/components/ui/Modal';
 import { useCateringData } from '@/hooks/useCateringData';
-import { formatCurrency } from '@/lib/utils';
+import { usePagination } from '@/hooks/usePagination';
+import { Pagination } from '@/components/ui/Pagination';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { formatCurrency, MIN_GUEST_COUNT, MAX_GUEST_COUNT } from '@/lib/utils';
 import { MenuItem, Package, EventTheme, RentalItem } from '@/types/database';
 
 export function MenuManagement() {
@@ -44,8 +47,11 @@ export function MenuManagement() {
     category_id: 1,
     description: '',
     price_per_head: 120,
+    image_url: '',
     is_available: true,
   });
+  const [itemImageUploading, setItemImageUploading] = useState(false);
+  const [itemImageError, setItemImageError] = useState('');
 
   const [packageDialogOpen, setPackageDialogOpen] = useState(false);
   const [editingPackage, setEditingPackage] = useState<Package | null>(null);
@@ -53,7 +59,7 @@ export function MenuManagement() {
     name: '',
     description: '',
     price_per_pax: 500,
-    min_pax: 50,
+    min_pax: MIN_GUEST_COUNT,
     theme_id: '' as string | number,
   });
 
@@ -73,6 +79,7 @@ export function MenuManagement() {
 
   // --- Handlers for Menu Items ---
   const handleOpenItemDialog = (item?: MenuItem) => {
+    setItemImageError('');
     if (item) {
       setEditingItem(item);
       setItemForm({
@@ -80,6 +87,7 @@ export function MenuManagement() {
         category_id: item.category_id,
         description: item.description || '',
         price_per_head: item.price_per_head,
+        image_url: item.image_url || '',
         is_available: item.is_available,
       });
     } else {
@@ -89,10 +97,55 @@ export function MenuManagement() {
         category_id: categories[0]?.id || 1,
         description: '',
         price_per_head: 120,
+        image_url: '',
         is_available: true,
       });
     }
     setItemDialogOpen(true);
+  };
+
+  const handleItemImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    setItemImageError('');
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setItemImageError('File size exceeds the 5 MB limit. Please choose a smaller image.');
+      e.target.value = '';
+      return;
+    }
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setItemImageError('Invalid file type. Only JPG, PNG, and WebP images are allowed.');
+      e.target.value = '';
+      return;
+    }
+
+    setItemImageUploading(true);
+    try {
+      if (isSupabaseConfigured()) {
+        const fileExt = file.name.split('.').pop()?.toLowerCase() || 'png';
+        const filePath = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+        const { error: uploadErr } = await supabase.storage
+          .from('menu-images')
+          .upload(filePath, file, { contentType: file.type, upsert: false });
+        if (uploadErr) throw new Error(uploadErr.message);
+
+        const { data: publicData } = supabase.storage.from('menu-images').getPublicUrl(filePath);
+        setItemForm(prev => ({ ...prev, image_url: publicData.publicUrl }));
+      } else {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setItemForm(prev => ({ ...prev, image_url: reader.result as string }));
+        };
+        reader.readAsDataURL(file);
+      }
+    } catch (err: any) {
+      setItemImageError(err.message || 'Image upload failed. Please try again.');
+    } finally {
+      setItemImageUploading(false);
+    }
   };
 
   const handleSaveItem = async (e: React.FormEvent) => {
@@ -103,6 +156,7 @@ export function MenuManagement() {
         category_id: Number(itemForm.category_id),
         description: itemForm.description,
         price_per_head: Number(itemForm.price_per_head),
+        image_url: itemForm.image_url.trim() || null,
         is_available: itemForm.is_available,
       });
     } else {
@@ -111,6 +165,7 @@ export function MenuManagement() {
         category_id: Number(itemForm.category_id),
         description: itemForm.description,
         price_per_head: Number(itemForm.price_per_head),
+        image_url: itemForm.image_url.trim() || null,
         is_available: itemForm.is_available,
       });
     }
@@ -134,7 +189,7 @@ export function MenuManagement() {
         name: '',
         description: '',
         price_per_pax: 550,
-        min_pax: 50,
+        min_pax: MIN_GUEST_COUNT,
         theme_id: '',
       });
     }
@@ -220,6 +275,9 @@ export function MenuManagement() {
     return matchSearch && matchCat;
   });
 
+  const menuItemsPagination = usePagination(filteredMenuItems, `${searchQuery}|${selectedCategory}`);
+  const rentalsPagination = usePagination(rentals);
+
   return (
     <div className="space-y-6">
       {/* Header with Title and Add Action */}
@@ -303,14 +361,32 @@ export function MenuManagement() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {filteredMenuItems.map(item => {
+                    {menuItemsPagination.paginatedItems.map(item => {
                       const cat = categories.find(c => c.id === item.category_id);
                       return (
                         <tr key={item.id} className="hover:bg-cream/40 transition-colors">
                           <td className="px-6 py-3.5">
-                            <div className="font-semibold text-ink">{item.name}</div>
-                            <div className="text-xs text-text-muted line-clamp-1">
-                              {item.description || '—'}
+                            <div className="flex items-center gap-3">
+                              <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border border-border bg-cream-dark">
+                                {item.image_url ? (
+                                  <img
+                                    src={item.image_url}
+                                    alt={item.name}
+                                    className="h-full w-full object-cover"
+                                    loading="lazy"
+                                  />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center text-text-faint">
+                                    <ImageIcon className="h-5 w-5" />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-semibold text-ink">{item.name}</div>
+                                <div className="text-xs text-text-muted line-clamp-1">
+                                  {item.description || '—'}
+                                </div>
+                              </div>
                             </div>
                           </td>
                           <td className="px-6 py-3.5 text-xs text-text-muted">
@@ -361,6 +437,16 @@ export function MenuManagement() {
                   </tbody>
                 </table>
               </div>
+              <Pagination
+                page={menuItemsPagination.page}
+                totalPages={menuItemsPagination.totalPages}
+                total={menuItemsPagination.total}
+                pageSize={menuItemsPagination.pageSize}
+                startIndex={menuItemsPagination.startIndex}
+                endIndex={menuItemsPagination.endIndex}
+                onPageChange={menuItemsPagination.setPage}
+                onPageSizeChange={menuItemsPagination.setPageSize}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -375,7 +461,9 @@ export function MenuManagement() {
                   <div className="p-6">
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="font-serif text-lg font-bold text-ink">{pkg.name}</h3>
-                      <Badge variant="gold">Min {pkg.min_pax} pax</Badge>
+                      <Badge variant="gold">
+                        {`${Math.min(MAX_GUEST_COUNT, Math.max(MIN_GUEST_COUNT, pkg.min_pax))}–${MAX_GUEST_COUNT} pax`}
+                      </Badge>
                     </div>
                     <div className="mt-2 text-2xl font-serif font-bold text-gold-dark">
                       {formatCurrency(pkg.price_per_pax)}
@@ -467,7 +555,7 @@ export function MenuManagement() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {rentals.map(rental => (
+                    {rentalsPagination.paginatedItems.map(rental => (
                       <tr key={rental.id} className="hover:bg-cream/40 transition-colors">
                         <td className="px-6 py-4 font-semibold text-ink">{rental.name}</td>
                         <td className="px-6 py-4 text-xs">
@@ -496,6 +584,16 @@ export function MenuManagement() {
                   </tbody>
                 </table>
               </div>
+              <Pagination
+                page={rentalsPagination.page}
+                totalPages={rentalsPagination.totalPages}
+                total={rentalsPagination.total}
+                pageSize={rentalsPagination.pageSize}
+                startIndex={rentalsPagination.startIndex}
+                endIndex={rentalsPagination.endIndex}
+                onPageChange={rentalsPagination.setPage}
+                onPageSizeChange={rentalsPagination.setPageSize}
+              />
             </CardContent>
           </Card>
         </TabsContent>
@@ -519,6 +617,69 @@ export function MenuManagement() {
               onChange={e => setItemForm({ ...itemForm, name: e.target.value })}
               placeholder="e.g. Beef Caldereta"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase text-text-muted mb-1">
+              Dish Photo
+            </label>
+            <div className="flex flex-col gap-3 rounded-lg border border-border bg-cream/40 p-3 sm:flex-row sm:items-center">
+              <div className="h-24 w-32 shrink-0 overflow-hidden rounded-md border border-border bg-white">
+                {itemForm.image_url ? (
+                  <img
+                    src={itemForm.image_url}
+                    alt="Dish preview"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-text-faint">
+                    <ImageIcon className="h-6 w-6" />
+                    <span className="text-[10px]">No photo</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handleItemImageChange}
+                    disabled={itemImageUploading}
+                    className="border-0 bg-transparent file:mr-3 file:rounded-md file:border-0 file:bg-gold file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white hover:file:bg-gold-dark cursor-pointer text-xs"
+                  />
+                  {itemForm.image_url && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setItemForm({ ...itemForm, image_url: '' })}
+                      className="gap-1 text-xs"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Remove
+                    </Button>
+                  )}
+                </div>
+
+                <Input
+                  placeholder="Or paste an image URL, e.g. /images/dish.jpg"
+                  value={itemForm.image_url.startsWith('data:') ? '' : itemForm.image_url}
+                  onChange={e => setItemForm({ ...itemForm, image_url: e.target.value })}
+                  className="text-xs"
+                />
+
+                <p className="flex items-center gap-1 text-[11px] text-text-muted">
+                  <Upload className="h-3 w-3" />
+                  JPG, PNG or WebP · max 5 MB
+                </p>
+                {itemImageUploading && (
+                  <p className="text-[11px] font-medium text-gold-dark">Uploading image…</p>
+                )}
+              </div>
+            </div>
+            {itemImageError && (
+              <p className="mt-1 text-[11px] text-red-600">{itemImageError}</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -625,9 +786,14 @@ export function MenuManagement() {
               <Input
                 type="number"
                 required
+                min={MIN_GUEST_COUNT}
+                max={MAX_GUEST_COUNT}
                 value={packageForm.min_pax}
                 onChange={e => setPackageForm({ ...packageForm, min_pax: Number(e.target.value) })}
               />
+              <p className="mt-1 text-[11px] text-text-muted">
+                Minimum guest count must be between {MIN_GUEST_COUNT} and {MAX_GUEST_COUNT} pax.
+              </p>
             </div>
           </div>
 

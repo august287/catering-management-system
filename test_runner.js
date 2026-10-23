@@ -69,6 +69,32 @@ async function runTests() {
     assert.strictEqual(utils.initials(''), '?', 'initials("") must return ?');
     assert.strictEqual(utils.initials(null), '?', 'initials(null) must return ?');
 
+    // guest count range tests (client policy: 100-200 pax)
+    assert.strictEqual(utils.MIN_GUEST_COUNT, 100, 'MIN_GUEST_COUNT must be 100');
+    assert.strictEqual(utils.MAX_GUEST_COUNT, 200, 'MAX_GUEST_COUNT must be 200');
+    assert.strictEqual(utils.isValidGuestCount(100), true, '100 pax must be valid');
+    assert.strictEqual(utils.isValidGuestCount(200), true, '200 pax must be valid');
+    assert.strictEqual(utils.isValidGuestCount(99), false, '99 pax must be invalid');
+    assert.strictEqual(utils.isValidGuestCount(201), false, '201 pax must be invalid');
+    assert.strictEqual(utils.isValidGuestCount(150.5), false, 'fractional pax must be invalid');
+
+    // booking date must be at least 1 week ahead
+    const fixedToday = new Date(2026, 9, 23, 12, 0, 0);
+    assert.strictEqual(utils.MIN_BOOKING_DAYS, 7, 'MIN_BOOKING_DAYS must be 7');
+    assert.strictEqual(utils.getMinimumBookingDate(fixedToday), '2026-10-30', 'Minimum booking date must be 7 days ahead');
+    assert.strictEqual(utils.isAtLeastOneWeekAhead('2026-10-30', fixedToday), true, '7-day advance booking must be accepted');
+    assert.strictEqual(utils.isAtLeastOneWeekAhead('2026-10-29', fixedToday), false, '6-day advance booking must be rejected');
+
+    // payment reference validation tests
+    assert.strictEqual(utils.isValidPaymentReference('GCASH-19284091'), true, 'valid GCash reference rejected');
+    assert.strictEqual(utils.isValidPaymentReference('BDO_REF.4921'), true, 'valid bank reference rejected');
+    assert.strictEqual(utils.isValidPaymentReference('ABC123'), true, 'six-character reference rejected');
+    assert.strictEqual(utils.isValidPaymentReference('AB12'), false, 'too-short reference accepted');
+    assert.strictEqual(utils.isValidPaymentReference('GCASH 19284091'), false, 'reference with spaces accepted');
+    assert.strictEqual(utils.isValidPaymentReference('-GCASH19284091'), false, 'reference starting with hyphen accepted');
+    assert.strictEqual(utils.isValidPaymentReference('GCASH#19284091'), false, 'reference with invalid symbol accepted');
+    assert.strictEqual(utils.isValidPaymentReference('A'.repeat(81)), false, 'overlong reference accepted');
+
     console.log('✓ src/lib/utils.ts tests passed');
 
     // 2. Test src/lib/mockData.ts entities & local asset references
@@ -119,7 +145,7 @@ async function runTests() {
     assert.strictEqual(mockData.INITIAL_PACKAGES.length, 5, 'Must have 5 packages');
     for (const pkg of mockData.INITIAL_PACKAGES) {
       assert.ok(pkg.price_per_pax >= 400 && pkg.price_per_pax <= 950, `Package ${pkg.name} price out of expected range`);
-      assert.ok(pkg.min_pax >= 30, `Package ${pkg.name} min_pax must be at least 30`);
+      assert.ok(pkg.min_pax >= 100 && pkg.min_pax <= 200, `Package ${pkg.name} min_pax must be between 100 and 200`);
     }
 
     // Rental Items

@@ -53,6 +53,7 @@ export interface MenuItem {
   name: string;
   description?: string | null;
   price_per_head: number;
+  image_url?: string | null;
   is_available: boolean;
 }
 

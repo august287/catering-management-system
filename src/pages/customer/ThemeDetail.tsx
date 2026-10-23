@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useCateringData } from '@/hooks/useCateringData';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, MIN_GUEST_COUNT, MAX_GUEST_COUNT } from '@/lib/utils';
 
 export function ThemeDetail() {
   const { themeId } = useParams<{ themeId: string }>();
@@ -101,7 +101,9 @@ export function ThemeDetail() {
               <div>
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="font-serif text-xl font-bold text-ink">{pkg.name}</h3>
-                  <Badge variant="gold">Min {pkg.min_pax} pax</Badge>
+                  <Badge variant="gold">
+                    {`${Math.min(MAX_GUEST_COUNT, Math.max(MIN_GUEST_COUNT, pkg.min_pax))}–${MAX_GUEST_COUNT} pax`}
+                  </Badge>
                 </div>
 
                 <div className="mt-3 font-serif text-3xl font-bold text-gold-dark">

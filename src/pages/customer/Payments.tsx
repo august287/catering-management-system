@@ -1,6 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CreditCard, Upload, CheckCircle2, Clock, AlertCircle, Image as ImageIcon } from 'lucide-react';
+import {
+  CreditCard,
+  Upload,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  Image as ImageIcon,
+  Printer,
+} from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -9,13 +17,17 @@ import { Badge } from '@/components/ui/Badge';
 import { ConfirmationModal } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useCateringData } from '@/hooks/useCateringData';
-import { formatCurrency, formatDate } from '@/lib/utils';
-import { PaymentType, PaymentMethod } from '@/types/database';
+import { usePagination } from '@/hooks/usePagination';
+import { Pagination } from '@/components/ui/Pagination';
+import { PaymentReceiptDialog } from '@/components/PaymentReceipt';
+import { formatCurrency, formatDate, isValidPaymentReference, PAYMENT_REFERENCE_MIN_LENGTH, PAYMENT_REFERENCE_MAX_LENGTH } from '@/lib/utils';
+import { PAYMENT_METHOD_LABELS, PAYMENT_TYPE_LABELS } from '@/lib/paymentLabels';
+import { PaymentType, PaymentMethod, Payment } from '@/types/database';
 
 export function Payments() {
   const [searchParams] = useSearchParams();
   const { profile } = useAuth();
-  const { reservations, payments, submitPayment } = useCateringData();
+  const { reservations, payments, themes, packages, submitPayment } = useCateringData();
 
   // Find customer's reservations with useMemo to avoid recreating arrays on every render
   const allCustomerReservations = useMemo(
@@ -28,13 +40,32 @@ export function Payments() {
     [allCustomerReservations]
   );
 
+  const reservationBalances = useMemo(() => {
+    const balances = new Map<number, { verified: number; pending: number; outstanding: number }>();
+    payableReservations.forEach(res => {
+      const resPayments = payments.filter(p => p.reservation_id === res.id);
+      const verified = resPayments
+        .filter(p => p.status === 'verified')
+        .reduce((sum, p) => sum + p.amount, 0);
+      const pending = resPayments
+        .filter(p => p.status === 'pending_verification')
+        .reduce((sum, p) => sum + p.amount, 0);
+      balances.set(res.id, {
+        verified,
+        pending,
+        outstanding: Math.max(0, res.total_amount - verified - pending),
+      });
+    });
+    return balances;
+  }, [payableReservations, payments]);
+
   const queryResId = Number(searchParams.get('reservationId') || 0);
   const isQueryPayable = payableReservations.some(r => r.id === queryResId);
   const isQueryBlocked = queryResId > 0 && !isQueryPayable;
   const preselectedResId = isQueryPayable ? queryResId : payableReservations[0]?.id || 0;
 
   const [reservationId, setReservationId] = useState<number>(preselectedResId);
-  const [amount, setAmount] = useState<number>(0);
+  const [amountInput, setAmountInput] = useState<string>('');
   const [amountUserEdited, setAmountUserEdited] = useState(false);
   const [paymentType, setPaymentType] = useState<PaymentType>('downpayment');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('gcash');
@@ -46,6 +77,26 @@ export function Payments() {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
+  const [receiptPayment, setReceiptPayment] = useState<Payment | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const amount = amountInput.trim() === '' ? 0 : Number(amountInput);
+
+  const selectedReservation = payableReservations.find(r => r.id === Number(reservationId));
+  const selectedReservationPayments = payments.filter(
+    p => p.reservation_id === Number(reservationId)
+  );
+  const verifiedPaid = selectedReservationPayments
+    .filter(p => p.status === 'verified')
+    .reduce((sum, p) => sum + p.amount, 0);
+  const pendingPaid = selectedReservationPayments
+    .filter(p => p.status === 'pending_verification')
+    .reduce((sum, p) => sum + p.amount, 0);
+  const remainingBalance = selectedReservation
+    ? Math.max(0, selectedReservation.total_amount - verifiedPaid)
+    : 0;
+  const outstandingBalance = Math.max(0, remainingBalance - pendingPaid);
+  const requiresProof = paymentMethod !== 'cash';
 
   // Sync default selection if reservations load after mount
   useEffect(() => {
@@ -61,22 +112,27 @@ export function Payments() {
 
   // Update default suggested amount when reservation or payment type changes
   useEffect(() => {
-    if (amountUserEdited) return;
-    const res = payableReservations.find(r => r.id === Number(reservationId));
-    if (res) {
-      if (paymentType === 'downpayment') {
-        setAmount(res.total_amount * 0.5);
-      } else if (paymentType === 'full_payment') {
-        setAmount(res.total_amount);
-      } else {
-        // BUG-08: remaining final balance is total minus verified payments
-        const verifiedPaid = payments
-          .filter(p => p.reservation_id === res.id && p.status === 'verified')
-          .reduce((sum, p) => sum + p.amount, 0);
-        setAmount(Math.max(0, res.total_amount - verifiedPaid));
-      }
+    if (amountUserEdited || !selectedReservation) return;
+    if (paymentType === 'downpayment') {
+      setAmountInput(
+        Math.min(selectedReservation.total_amount * 0.5, outstandingBalance).toFixed(2)
+      );
+    } else if (paymentType === 'full_payment') {
+      setAmountInput(outstandingBalance.toFixed(2));
+    } else {
+      // BUG-08: remaining balance is total minus verified and pending payments
+      setAmountInput(outstandingBalance.toFixed(2));
     }
-  }, [reservationId, paymentType, payableReservations, payments, amountUserEdited]);
+  }, [
+    reservationId,
+    paymentType,
+    payableReservations,
+    payments,
+    amountUserEdited,
+    selectedReservation,
+    remainingBalance,
+    outstandingBalance,
+  ]);
 
   // Handle local file preview with BUG-10 validation
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -121,16 +177,55 @@ export function Payments() {
     setSuccessMessage('');
     setErrorMessage('');
 
-    if (!reservationId) {
-      setErrorMessage('Please choose a reservation to pay for.');
+    const reservation = payableReservations.find(r => r.id === Number(reservationId));
+    if (!reservation) {
+      setErrorMessage('Please choose a valid active reservation to pay for.');
       return;
     }
-    if (!amount || amount <= 0) {
+    if (!Number.isFinite(amount) || amount <= 0) {
       setErrorMessage('Please specify a valid payment amount.');
       return;
     }
-    if (!referenceNumber.trim()) {
+
+    const roundedAmount = Math.round(amount * 100) / 100;
+    if (outstandingBalance <= 0) {
+      setErrorMessage(
+        'This reservation is already fully covered by verified or pending payments.'
+      );
+      return;
+    }
+    if (roundedAmount > outstandingBalance + 0.005) {
+      setErrorMessage(
+        `Payment amount cannot exceed the outstanding balance of ${formatCurrency(outstandingBalance)}.`
+      );
+      return;
+    }
+
+    const reference = referenceNumber.trim();
+    if (paymentMethod !== 'cash' && !reference) {
       setErrorMessage('Please provide the transaction reference number (e.g. GCash Ref No).');
+      return;
+    }
+    if (reference && !isValidPaymentReference(reference)) {
+      setErrorMessage(
+        'Enter a valid reference number: 6–80 characters using letters, numbers, hyphens, underscores, or periods only.'
+      );
+      return;
+    }
+    if (
+      reference &&
+      payments.some(
+        p => p.reference_number?.trim().toLowerCase() === reference.toLowerCase()
+      )
+    ) {
+      setErrorMessage(
+        'This transaction reference number has already been submitted. Please double-check your receipt.'
+      );
+      return;
+    }
+
+    if (requiresProof && !selectedFile) {
+      setErrorMessage('Please attach a screenshot or photo as proof of payment.');
       return;
     }
 
@@ -143,20 +238,22 @@ export function Payments() {
     try {
       await submitPayment({
         reservation_id: Number(reservationId),
-        amount: Number(amount),
+        amount: Math.round(Number(amount) * 100) / 100,
         payment_type: paymentType,
         payment_method: paymentMethod,
-        reference_number: referenceNumber,
-        proof_image_url: proofPreview || '/images/receipt_sample.svg',
+        reference_number: referenceNumber.trim() || undefined,
+        proof_image_url: proofPreview || undefined,
         proof_file: selectedFile,
       });
 
       setSuccessMessage(
-        'Payment submitted successfully! Our accounting team will verify your receipt shortly.'
+        'Payment submitted successfully! Our accounting team will verify your payment shortly.'
       );
       setReferenceNumber('');
       setProofPreview('');
       setSelectedFile(null);
+      setAmountUserEdited(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err: any) {
       setErrorMessage(err.message || 'Payment submission failed.');
     } finally {
@@ -168,12 +265,34 @@ export function Payments() {
   const customerReservationIds = allCustomerReservations.map(r => r.id);
   const myPayments = payments.filter(p => customerReservationIds.includes(p.reservation_id));
 
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    total,
+    totalPages,
+    startIndex,
+    endIndex,
+    paginatedItems: paginatedPayments,
+  } = usePagination(myPayments);
+
+  const receiptReservation = receiptPayment
+    ? reservations.find(r => r.id === receiptPayment.reservation_id) || null
+    : null;
+  const receiptPackage = receiptReservation
+    ? packages.find(p => p.id === receiptReservation.package_id)
+    : undefined;
+  const receiptTheme = receiptReservation
+    ? themes.find(t => t.id === receiptReservation.theme_id)
+    : undefined;
+
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="font-serif text-2xl font-bold text-ink">Payment Submissions</h2>
+        <h2 className="font-serif text-2xl font-bold text-ink">Payments</h2>
         <p className="text-sm text-text-muted">
-          Submit proof of downpayments, view balance settlements, and track verification statuses.
+          Submit payments, upload proof of payment, and track verification statuses.
         </p>
       </div>
 
@@ -181,9 +300,10 @@ export function Payments() {
         {/* Payment Submission Form */}
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Submit Payment Receipt</CardTitle>
+            <CardTitle>Submit a Payment</CardTitle>
             <p className="text-xs text-text-muted">
-              Pay via GCash, Bank Transfer, or Credit Card and upload proof for instant logging.
+              Pay via GCash, bank transfer, card, or cash, then upload your proof of payment for
+              verification.
             </p>
           </CardHeader>
           <CardContent>
@@ -211,7 +331,7 @@ export function Payments() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
-                  Select Event Reservation
+                  Select Reservation
                 </label>
                 {payableReservations.length === 0 ? (
                   <p className="text-xs text-red-600">No active bookings found to submit payment for.</p>
@@ -224,19 +344,50 @@ export function Payments() {
                     }}
                     required
                   >
-                    {payableReservations.map(res => (
-                      <option key={res.id} value={res.id}>
-                        {res.booking_code} · {formatDate(res.event_date)} (Total: {formatCurrency(res.total_amount)})
-                      </option>
-                    ))}
+                    {payableReservations.map(res => {
+                      const balance = reservationBalances.get(res.id);
+                      const amountLabel =
+                        paymentType === 'downpayment'
+                          ? `Contract Total: ${formatCurrency(res.total_amount)}`
+                          : `Remaining Balance: ${formatCurrency(balance?.outstanding ?? res.total_amount)}`;
+                      return (
+                        <option key={res.id} value={res.id}>
+                          {res.booking_code} · {formatDate(res.event_date)} · {amountLabel}
+                        </option>
+                      );
+                    })}
                   </Select>
+                )}
+                {selectedReservation && (
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-text-muted">
+                    <span>
+                      Contract Total:{' '}
+                      <strong className="text-text">
+                        {formatCurrency(selectedReservation.total_amount)}
+                      </strong>
+                    </span>
+                    <span>
+                      Verified Paid:{' '}
+                      <strong className="text-emerald-700">{formatCurrency(verifiedPaid)}</strong>
+                    </span>
+                    {pendingPaid > 0 && (
+                      <span>
+                        Pending Verification:{' '}
+                        <strong className="text-amber-700">{formatCurrency(pendingPaid)}</strong>
+                      </span>
+                    )}
+                    <span>
+                      Remaining Balance:{' '}
+                      <strong className="text-gold-dark">{formatCurrency(outstandingBalance)}</strong>
+                    </span>
+                  </div>
                 )}
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
-                    Payment Stage
+                    Payment Type
                   </label>
                   <Select
                     value={paymentType}
@@ -245,15 +396,15 @@ export function Payments() {
                       setAmountUserEdited(false);
                     }}
                   >
-                    <option value="downpayment">50% Initial Downpayment</option>
-                    <option value="final_balance">Remaining Final Balance</option>
-                    <option value="full_payment">100% Full Payment</option>
+                    <option value="downpayment">{PAYMENT_TYPE_LABELS.downpayment}</option>
+                    <option value="final_balance">{PAYMENT_TYPE_LABELS.final_balance}</option>
+                    <option value="full_payment">{PAYMENT_TYPE_LABELS.full_payment}</option>
                   </Select>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
-                    Payment Channel
+                    Payment Method
                   </label>
                   <Select
                     value={paymentMethod}
@@ -270,19 +421,32 @@ export function Payments() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
-                    Amount to Remit (PHP)
+                    Amount to Pay (PHP)
                   </label>
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
                     required
-                    min={1}
-                    value={amount === 0 ? '' : amount}
+                    placeholder="e.g. 5000.00"
+                    value={amountInput}
                     onChange={e => {
-                      const val = e.target.value;
-                      setAmount(val === '' ? 0 : Number(val));
-                      setAmountUserEdited(true);
+                      const raw = e.target.value.replace(/,/g, '');
+                      if (/^\d*\.?\d{0,2}$/.test(raw)) {
+                        setAmountInput(raw);
+                        setAmountUserEdited(true);
+                      }
                     }}
                   />
+                  <p className="mt-1 text-[11px] text-text-muted">
+                    You may type any amount up to the outstanding balance:{' '}
+                    <span className="font-semibold text-text">
+                      {formatCurrency(outstandingBalance)}
+                    </span>
+                    {pendingPaid > 0 && (
+                      <> · {formatCurrency(pendingPaid)} awaiting verification</>
+                    )}
+                  </p>
                 </div>
 
                 <div>
@@ -290,20 +454,37 @@ export function Payments() {
                     Transaction Reference No.
                   </label>
                   <Input
-                    required
-                    placeholder="e.g. GCASH-19284091 or BDO-REF-4921"
+                    required={paymentMethod !== 'cash'}
+                    minLength={PAYMENT_REFERENCE_MIN_LENGTH}
+                    maxLength={PAYMENT_REFERENCE_MAX_LENGTH}
+                    pattern="[A-Za-z0-9][A-Za-z0-9._-]{5,79}"
+                    placeholder={
+                      paymentMethod === 'cash'
+                        ? 'Optional for cash payments'
+                        : 'e.g. GCASH-19284091 or BDO-REF-4921'
+                    }
                     value={referenceNumber}
                     onChange={e => setReferenceNumber(e.target.value)}
                   />
+                  <p className="mt-1 text-[11px] text-text-muted">
+                    {paymentMethod === 'cash'
+                      ? 'Optional for cash on site. '
+                      : 'Required for GCash, bank, and card payments. '}
+                    6–80 characters using letters, numbers, hyphens, underscores, or periods only.
+                  </p>
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
-                  Attach Proof of Payment (Screenshot / Receipt)
+                  Upload Proof of Payment{' '}
+                  <span className="font-normal lowercase text-text-muted">
+                    {requiresProof ? '(required)' : '(optional)'}
+                  </span>
                 </label>
                 <div className="flex flex-col sm:flex-row items-center gap-4 rounded-lg border-2 border-dashed border-border p-4 bg-cream/40">
                   <Input
+                    ref={fileInputRef}
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
                     onChange={handleFileChange}
@@ -320,12 +501,19 @@ export function Payments() {
                     </div>
                   )}
                 </div>
+                <p className="mt-1 text-[11px] text-text-muted">
+                  {requiresProof
+                    ? 'Required for GCash, bank transfer, and card payments. Upload a screenshot or photo of the transaction. JPG, PNG or WebP · max 5 MB.'
+                    : 'Optional for cash payments. Upload a photo if available. JPG, PNG or WebP · max 5 MB.'}
+                </p>
               </div>
 
               <Button
                 type="submit"
                 variant="gold"
-                disabled={submitting || payableReservations.length === 0}
+                disabled={
+                  submitting || payableReservations.length === 0 || outstandingBalance <= 0
+                }
                 className="w-full h-11 text-sm mt-2"
               >
                 {submitting ? 'Submitting Payment...' : 'Submit Payment for Verification'}
@@ -340,7 +528,7 @@ export function Payments() {
             <CardHeader className="pb-3 border-b border-ink-muted/50">
               <CardTitle className="text-white flex items-center gap-2">
                 <CreditCard className="h-5 w-5 text-gold" />
-                Catering Bank Accounts
+                Catering Payment Accounts
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 text-xs pt-4">
@@ -388,21 +576,22 @@ export function Payments() {
                   <th className="px-6 py-3.5">Reference #</th>
                   <th className="px-6 py-3.5">Booking Code</th>
                   <th className="px-6 py-3.5">Payment Method</th>
-                  <th className="px-6 py-3.5">Type</th>
+                  <th className="px-6 py-3.5">Payment Type</th>
                   <th className="px-6 py-3.5">Amount</th>
                   <th className="px-6 py-3.5">Date Submitted</th>
                   <th className="px-6 py-3.5">Status</th>
+                  <th className="px-6 py-3.5 text-right">Receipt</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {myPayments.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-10 text-center text-sm text-text-muted">
+                    <td colSpan={8} className="px-6 py-10 text-center text-sm text-text-muted">
                       No payment history recorded yet.
                     </td>
                   </tr>
                 ) : (
-                  myPayments.map(pay => {
+                  paginatedPayments.map(pay => {
                     const res = reservations.find(r => r.id === pay.reservation_id);
                     return (
                       <tr key={pay.id} className="hover:bg-cream/40">
@@ -412,11 +601,11 @@ export function Payments() {
                         <td className="px-6 py-4 font-mono text-xs text-text">
                           {res?.booking_code || 'RES-?'}
                         </td>
-                        <td className="px-6 py-4 text-xs font-semibold uppercase text-text-muted">
-                          {pay.payment_method.replace('_', ' ')}
+                        <td className="px-6 py-4 text-xs font-semibold text-text-muted">
+                          {PAYMENT_METHOD_LABELS[pay.payment_method]}
                         </td>
-                        <td className="px-6 py-4 text-xs capitalize text-text-muted">
-                          {pay.payment_type.replace('_', ' ')}
+                        <td className="px-6 py-4 text-xs text-text-muted">
+                          {PAYMENT_TYPE_LABELS[pay.payment_type]}
                         </td>
                         <td className="px-6 py-4 font-bold text-ink text-xs">
                           {formatCurrency(pay.amount)}
@@ -427,6 +616,17 @@ export function Payments() {
                         <td className="px-6 py-4">
                           <Badge variant={pay.status}>{pay.status.replace('_', ' ')}</Badge>
                         </td>
+                        <td className="px-6 py-4 text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setReceiptPayment(pay)}
+                            className="gap-1 text-xs"
+                            title="View and print receipt"
+                          >
+                            <Printer className="h-3.5 w-3.5" /> Receipt
+                          </Button>
+                        </td>
                       </tr>
                     );
                   })
@@ -434,8 +634,34 @@ export function Payments() {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </CardContent>
       </Card>
+
+      <PaymentReceiptDialog
+        open={receiptPayment !== null}
+        onOpenChange={open => !open && setReceiptPayment(null)}
+        payment={receiptPayment}
+        reservation={receiptReservation}
+        customerName={profile?.name || 'Customer'}
+        customerPhone={profile?.phone}
+        packageName={receiptPackage?.name}
+        themeName={receiptTheme?.name}
+        reservationPayments={
+          receiptPayment
+            ? payments.filter(p => p.reservation_id === receiptPayment.reservation_id)
+            : []
+        }
+      />
 
       <ConfirmationModal
         open={showConfirm}

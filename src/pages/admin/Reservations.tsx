@@ -8,6 +8,8 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { useCateringData } from '@/hooks/useCateringData';
+import { usePagination } from '@/hooks/usePagination';
+import { Pagination } from '@/components/ui/Pagination';
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
 import { Reservation, ReservationStatus } from '@/types/database';
 
@@ -29,6 +31,18 @@ export function Reservations() {
       (cust && cust.name.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchStatus && matchSearch;
   });
+
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    total,
+    totalPages,
+    startIndex,
+    endIndex,
+    paginatedItems: paginatedReservations,
+  } = usePagination(filteredReservations, `${activeTab}|${searchQuery}`);
 
   const handleOpenDetails = (res: Reservation) => {
     setSelectedRes(res);
@@ -120,14 +134,14 @@ export function Reservations() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filteredReservations.length === 0 ? (
+                {                  filteredReservations.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-12 text-center text-sm text-text-muted">
                       No reservations found for this filter.
                     </td>
                   </tr>
                 ) : (
-                  filteredReservations.map(res => {
+                  paginatedReservations.map(res => {
                     const cust = profiles.find(p => p.id === res.customer_id);
                     const pkg = packages.find(p => p.id === res.package_id);
                     return (
@@ -170,6 +184,16 @@ export function Reservations() {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </CardContent>
       </Card>
 

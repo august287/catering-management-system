@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, Eye, Search, CreditCard, Image as ImageIcon } from 'lucide-react';
+import { CheckCircle, XCircle, Eye, Search, CreditCard, Image as ImageIcon, Printer } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -8,17 +8,22 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { ConfirmationModal } from '@/components/ui/Modal';
 import { useCateringData } from '@/hooks/useCateringData';
+import { usePagination } from '@/hooks/usePagination';
+import { Pagination } from '@/components/ui/Pagination';
+import { PaymentReceiptDialog } from '@/components/PaymentReceipt';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { PAYMENT_METHOD_LABELS, PAYMENT_TYPE_LABELS } from '@/lib/paymentLabels';
 import { Payment } from '@/types/database';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 export function Payments() {
-  const { payments, verifyPayment, reservations, profiles } = useCateringData();
+  const { payments, verifyPayment, reservations, profiles, themes, packages } = useCateringData();
   const [activeTab, setActiveTab] = useState('pending');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProof, setSelectedProof] = useState<Payment | null>(null);
   const [displayProofUrl, setDisplayProofUrl] = useState<string>('');
   const [proofModalOpen, setProofModalOpen] = useState(false);
+  const [receiptPayment, setReceiptPayment] = useState<Payment | null>(null);
 
   const [paymentAction, setPaymentAction] = useState<{ id: number; status: 'verified' | 'rejected' } | null>(null);
 
@@ -71,6 +76,18 @@ export function Payments() {
     return matchStatus && matchSearch;
   });
 
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    total,
+    totalPages,
+    startIndex,
+    endIndex,
+    paginatedItems: paginatedPayments,
+  } = usePagination(filteredPayments, `${activeTab}|${searchQuery}`);
+
   const handleOpenProof = (pay: Payment) => {
     setSelectedProof(pay);
     setProofModalOpen(true);
@@ -84,6 +101,19 @@ export function Payments() {
   };
 
   const pendingCount = payments.filter(p => p.status === 'pending_verification').length;
+
+  const receiptReservation = receiptPayment
+    ? reservations.find(r => r.id === receiptPayment.reservation_id) || null
+    : null;
+  const receiptCustomer =
+    receiptReservation?.customer ||
+    profiles.find(p => p.id === receiptReservation?.customer_id);
+  const receiptPackage = receiptReservation
+    ? receiptReservation.package || packages.find(p => p.id === receiptReservation.package_id)
+    : undefined;
+  const receiptTheme = receiptReservation
+    ? receiptReservation.theme || themes.find(t => t.id === receiptReservation.theme_id)
+    : undefined;
 
   return (
     <div className="space-y-6">
@@ -137,7 +167,7 @@ export function Payments() {
                   <th className="px-6 py-3.5">Reference #</th>
                   <th className="px-6 py-3.5">Booking Code</th>
                   <th className="px-6 py-3.5">Payment Method</th>
-                  <th className="px-6 py-3.5">Type</th>
+                  <th className="px-6 py-3.5">Payment Type</th>
                   <th className="px-6 py-3.5">Amount</th>
                   <th className="px-6 py-3.5">Submitted Date</th>
                   <th className="px-6 py-3.5">Status</th>
@@ -152,7 +182,7 @@ export function Payments() {
                     </td>
                   </tr>
                 ) : (
-                  filteredPayments.map(pay => {
+                  paginatedPayments.map(pay => {
                     const res = reservations.find(r => r.id === pay.reservation_id);
                     return (
                       <tr key={pay.id} className="hover:bg-cream/40 transition-colors">
@@ -162,11 +192,11 @@ export function Payments() {
                         <td className="px-6 py-4 font-mono text-xs text-text">
                           {res?.booking_code || 'RES-?'}
                         </td>
-                        <td className="px-6 py-4 text-xs font-semibold uppercase text-text-muted">
-                          {pay.payment_method.replace('_', ' ')}
+                        <td className="px-6 py-4 text-xs font-semibold text-text-muted">
+                          {PAYMENT_METHOD_LABELS[pay.payment_method]}
                         </td>
-                        <td className="px-6 py-4 text-xs capitalize text-text-muted">
-                          {pay.payment_type.replace('_', ' ')}
+                        <td className="px-6 py-4 text-xs text-text-muted">
+                          {PAYMENT_TYPE_LABELS[pay.payment_type]}
                         </td>
                         <td className="px-6 py-4 font-bold text-ink text-xs">
                           {formatCurrency(pay.amount)}
@@ -179,6 +209,16 @@ export function Payments() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setReceiptPayment(pay)}
+                              className="h-8 px-2 text-xs"
+                              title="View & Print Receipt"
+                            >
+                              <Printer className="h-4 w-4" />
+                            </Button>
+
                             <Button
                               variant="outline"
                               size="sm"
@@ -219,6 +259,16 @@ export function Payments() {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </CardContent>
       </Card>
 
@@ -228,7 +278,7 @@ export function Payments() {
           open={proofModalOpen}
           onOpenChange={setProofModalOpen}
           title={`Payment Proof: ${selectedProof.reference_number || 'N/A'}`}
-          description={`Amount: ${formatCurrency(selectedProof.amount)} via ${selectedProof.payment_method.toUpperCase()}`}
+          description={`Amount: ${formatCurrency(selectedProof.amount)} via ${PAYMENT_METHOD_LABELS[selectedProof.payment_method]}`}
           className="max-w-xl"
         >
           <div className="space-y-4">
@@ -245,7 +295,7 @@ export function Payments() {
               ) : (
                 <div className="py-12 text-center text-text-muted">
                   <ImageIcon className="h-10 w-10 mx-auto text-text-faint mb-2" />
-                  No digital receipt uploaded.
+                  No proof of payment uploaded.
                 </div>
               )}
             </div>
@@ -253,11 +303,11 @@ export function Payments() {
             <div className="grid grid-cols-2 gap-3 text-xs bg-cream p-3 rounded-lg border border-border">
               <div>
                 <span className="text-text-muted">Method:</span>
-                <p className="font-bold text-ink uppercase">{selectedProof.payment_method}</p>
+                <p className="font-bold text-ink">{PAYMENT_METHOD_LABELS[selectedProof.payment_method]}</p>
               </div>
               <div>
                 <span className="text-text-muted">Payment Type:</span>
-                <p className="font-bold text-ink capitalize">{selectedProof.payment_type.replace('_', ' ')}</p>
+                  <p className="font-bold text-ink">{PAYMENT_TYPE_LABELS[selectedProof.payment_type]}</p>
               </div>
               <div>
                 <span className="text-text-muted">Status:</span>
@@ -298,6 +348,22 @@ export function Payments() {
           </div>
         </Dialog>
       )}
+
+      <PaymentReceiptDialog
+        open={receiptPayment !== null}
+        onOpenChange={open => !open && setReceiptPayment(null)}
+        payment={receiptPayment}
+        reservation={receiptReservation}
+        customerName={receiptCustomer?.name || 'Customer'}
+        customerPhone={receiptCustomer?.phone}
+        packageName={receiptPackage?.name}
+        themeName={receiptTheme?.name}
+        reservationPayments={
+          receiptPayment
+            ? payments.filter(p => p.reservation_id === receiptPayment.reservation_id)
+            : []
+        }
+      />
 
       {/* Confirmation Modal */}
       <ConfirmationModal

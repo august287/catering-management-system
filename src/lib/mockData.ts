@@ -107,7 +107,7 @@ export const INITIAL_CATEGORIES: MenuCategory[] = [
   { id: 6, name: 'Desserts & Drinks', display_order: 6 },
 ];
 
-export const INITIAL_MENU_ITEMS: MenuItem[] = [
+const MENU_ITEM_SEED: MenuItem[] = [
   {
     id: 1,
     category_id: 1,
@@ -318,6 +318,40 @@ export const INITIAL_MENU_ITEMS: MenuItem[] = [
   },
 ];
 
+const MENU_ITEM_IMAGES: Record<number, string> = {
+  1: '/images/1 PIC.jpg',
+  2: '/images/2 PIC.jpg',
+  3: '/images/3 PIC.jpg',
+  4: '/images/4 PIC.jpg',
+  5: '/images/5.jpg',
+  6: '/images/6.jpg',
+  7: '/images/7.jpg',
+  8: '/images/8.jpg',
+  9: '/images/fiesta.jpg',
+  10: '/images/corpo.jpg',
+  11: '/images/wedding.jpg',
+  12: '/images/2 PIC.jpg',
+  13: '/images/3 PIC.jpg',
+  14: '/images/4 PIC.jpg',
+  15: '/images/8.jpg',
+  16: '/images/bday-girl.jpg',
+  17: '/images/bday-girl-2.jpg',
+  18: '/images/5.jpg',
+  19: '/images/6.jpg',
+  20: '/images/7.jpg',
+  21: '/images/debut.jpg',
+  22: '/images/christening.jpg',
+  23: '/images/fiesta.jpg',
+  24: '/images/wedding.jpg',
+  25: '/images/corpo.jpg',
+  26: '/images/debut.jpg',
+};
+
+export const INITIAL_MENU_ITEMS: MenuItem[] = MENU_ITEM_SEED.map(item => ({
+  ...item,
+  image_url: MENU_ITEM_IMAGES[item.id] ?? null,
+}));
+
 export const INITIAL_PACKAGES: Package[] = [
   {
     id: 1,
@@ -325,7 +359,7 @@ export const INITIAL_PACKAGES: Package[] = [
     description:
       '1 Soup, 1 Appetizer, 3 Main Courses (Pork, Chicken, Fish), 1 Noodle, 1 Rice, 1 Dessert, Bottomless Iced Tea. Complete buffet setup with floral arrangement and trained waiters.',
     price_per_pax: 450,
-    min_pax: 50,
+    min_pax: 100,
     theme_id: null,
   },
   {
@@ -334,7 +368,7 @@ export const INITIAL_PACKAGES: Package[] = [
     description:
       '1 Soup, 2 Appetizers, 4 Main Courses (Beef, Pork, Chicken, Seafood), 1 Noodle, 2 Rice varieties, 2 Desserts, Bottomless Specialty Cooler. Complete themed setup with centerpiece on all guest tables.',
     price_per_pax: 650,
-    min_pax: 50,
+    min_pax: 100,
     theme_id: null,
   },
   {
@@ -343,7 +377,7 @@ export const INITIAL_PACKAGES: Package[] = [
     description:
       'Full wedding grand reception: 2 Soups, 3 Appetizers, 5 Premium Mains including Roasted Beef Caldereta & Tiger Prawns, 2 Noodles, 3 Gourmet Desserts, Champagne toast, VIP Table service & centerpiece.',
     price_per_pax: 950,
-    min_pax: 80,
+    min_pax: 100,
     theme_id: 1,
   },
   {
@@ -352,7 +386,7 @@ export const INITIAL_PACKAGES: Package[] = [
     description:
       'Curated for 18th Birthdays: 2 Appetizers, 4 Main Courses, 1 Pasta/Noodle, Steamed Rice, 2 Desserts, Mocktail fountain, Debutante stage decor and 18-roses arrangement coordination.',
     price_per_pax: 550,
-    min_pax: 60,
+    min_pax: 100,
     theme_id: 3,
   },
   {
@@ -361,7 +395,7 @@ export const INITIAL_PACKAGES: Package[] = [
     description:
       'Tailored for conferences, seminars, and corporate meetings: Quick-serve hot buffet with 3 Mains, 1 Vegetable/Salad, Rice, Dessert, and Fresh Brewed Coffee / Iced Tea station.',
     price_per_pax: 400,
-    min_pax: 30,
+    min_pax: 100,
     theme_id: 4,
   },
 ];

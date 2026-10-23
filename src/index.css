@@ -44,3 +44,35 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #a9822f;
 }
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  body.receipt-print-mode {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff;
+  }
+
+  body.receipt-print-mode > *:not(#printable-receipt) {
+    display: none !important;
+  }
+
+  body.receipt-print-mode #printable-receipt {
+    display: block !important;
+    width: 100%;
+    padding: 12mm;
+    margin: 0;
+    background: #ffffff;
+    color: #17140f;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}

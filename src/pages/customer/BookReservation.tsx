@@ -22,7 +22,14 @@ import { Badge } from '@/components/ui/Badge';
 import { ConfirmationModal } from '@/components/ui/Modal';
 import { useAuth } from '@/hooks/useAuth';
 import { useCateringData } from '@/hooks/useCateringData';
-import { formatCurrency } from '@/lib/utils';
+import {
+  formatCurrency,
+  getMinimumBookingDate,
+  isAtLeastOneWeekAhead,
+  isValidGuestCount,
+  MIN_GUEST_COUNT,
+  MAX_GUEST_COUNT,
+} from '@/lib/utils';
 
 export function BookReservation() {
   const [searchParams] = useSearchParams();
@@ -37,20 +44,13 @@ export function BookReservation() {
   const [step, setStep] = useState<number>(1);
   const [themeId, setThemeId] = useState<number>(initialThemeId);
   const [packageId, setPackageId] = useState<number>(initialPkgId);
-  const [guestCount, setGuestCount] = useState<number>(100);
+  const [guestCount, setGuestCount] = useState<number>(MIN_GUEST_COUNT);
 
   // Rental quantities: { [rental_item_id]: quantity }
   const [selectedRentals, setSelectedRentals] = useState<Record<number, number>>({});
 
-  // Today's date formatted as YYYY-MM-DD in local time
-  const getTodayDateString = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-  const today = getTodayDateString();
+  // Bookings must be placed at least one week before the event date.
+  const minEventDate = getMinimumBookingDate();
 
   // Event details
   const [eventDate, setEventDate] = useState<string>('');
@@ -64,6 +64,10 @@ export function BookReservation() {
 
   const selectedTheme = themes.find(t => t.id === themeId);
   const selectedPackage = packages.find(p => p.id === packageId);
+  const minGuestCount = Math.min(
+    MAX_GUEST_COUNT,
+    Math.max(MIN_GUEST_COUNT, selectedPackage?.min_pax || MIN_GUEST_COUNT)
+  );
 
   // Financial Calculations
   const packageTotal = (selectedPackage?.price_per_pax || 0) * guestCount;
@@ -105,16 +109,24 @@ export function BookReservation() {
         setErrorMessage('Please pick an event date.');
         return;
       }
-      if (eventDate <= today) {
-        setErrorMessage('Event date must be a future date. You cannot book for today or a past date.');
+      if (!isAtLeastOneWeekAhead(eventDate)) {
+        setErrorMessage(
+          'Reservations must be booked at least 1 week (7 days) before the event date. Please choose a later date.'
+        );
         return;
       }
       if (!venueAddress.trim()) {
         setErrorMessage('Please specify the event venue address.');
         return;
       }
-      if (selectedPackage && guestCount < selectedPackage.min_pax) {
-        setErrorMessage(`This package requires a minimum of ${selectedPackage.min_pax} guests.`);
+      if (!isValidGuestCount(guestCount)) {
+        setErrorMessage(
+          `Guest count must be between ${MIN_GUEST_COUNT} and ${MAX_GUEST_COUNT} pax.`
+        );
+        return;
+      }
+      if (guestCount < minGuestCount) {
+        setErrorMessage(`This package requires a minimum of ${minGuestCount} guests.`);
         return;
       }
       setStep(4);
@@ -124,6 +136,28 @@ export function BookReservation() {
   const handleSubmitBooking = async () => {
     if (!profile) {
       setErrorMessage('You must be logged in to complete a booking.');
+      return;
+    }
+
+    if (!isAtLeastOneWeekAhead(eventDate)) {
+      setStep(3);
+      setErrorMessage(
+        'Reservations must be booked at least 1 week (7 days) before the event date. Please choose a later date.'
+      );
+      return;
+    }
+
+    if (!isValidGuestCount(guestCount)) {
+      setStep(3);
+      setErrorMessage(
+        `Guest count must be between ${MIN_GUEST_COUNT} and ${MAX_GUEST_COUNT} pax.`
+      );
+      return;
+    }
+
+    if (guestCount < minGuestCount) {
+      setStep(3);
+      setErrorMessage(`This package requires a minimum of ${minGuestCount} guests.`);
       return;
     }
 
@@ -252,7 +286,9 @@ export function BookReservation() {
                       <div>
                         <div className="flex items-start justify-between">
                           <h4 className="font-serif text-base font-bold text-ink">{pkg.name}</h4>
-                          <Badge variant="gold">Min {pkg.min_pax} pax</Badge>
+                          <Badge variant="gold">
+                            {`${Math.min(MAX_GUEST_COUNT, Math.max(MIN_GUEST_COUNT, pkg.min_pax))}–${MAX_GUEST_COUNT} pax`}
+                          </Badge>
                         </div>
                         <div className="mt-2 font-serif text-2xl font-bold text-gold-dark">
                           {formatCurrency(pkg.price_per_pax)}
@@ -355,10 +391,13 @@ export function BookReservation() {
                 <Input
                   type="date"
                   required
-                  min={today}
+                  min={minEventDate}
                   value={eventDate}
                   onChange={e => setEventDate(e.target.value)}
                 />
+                <span className="mt-1 block text-[11px] text-text-muted">
+                  Must be at least 1 week (7 days) from today.
+                </span>
               </div>
 
               <div>
@@ -380,12 +419,15 @@ export function BookReservation() {
                 <Input
                   type="number"
                   required
-                  min={selectedPackage?.min_pax || 30}
+                  min={minGuestCount}
+                  max={MAX_GUEST_COUNT}
+                  step={1}
                   value={guestCount}
                   onChange={e => setGuestCount(Number(e.target.value))}
                 />
                 <span className="text-[11px] text-text-muted">
-                  Minimum {selectedPackage?.min_pax || 30} pax for {selectedPackage?.name}
+                  Guest count must be between {minGuestCount} and {MAX_GUEST_COUNT} pax
+                  {selectedPackage ? ` for ${selectedPackage.name}` : ''}.
                 </span>
               </div>
             </div>
