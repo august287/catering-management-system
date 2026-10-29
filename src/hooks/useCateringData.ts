@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { mockStore } from '@/lib/mockData';
+import { mockStore, withDefaultMenuImage } from '@/lib/mockData';
 import {
   isAtLeastOneWeekAhead,
   isValidGuestCount,
@@ -78,7 +78,7 @@ export function useCateringData() {
 
       if (th && th.length > 0) setThemes(th);
       if (cat && cat.length > 0) setCategories(cat);
-      if (mi && mi.length > 0) setMenuItems(mi);
+      if (mi && mi.length > 0) setMenuItems((mi as MenuItem[]).map(withDefaultMenuImage));
       if (pkg && pkg.length > 0) setPackages(pkg);
       if (rent && rent.length > 0) setRentals(rent);
       if (res) setReservations(res as any);

@@ -352,6 +352,18 @@ export const INITIAL_MENU_ITEMS: MenuItem[] = MENU_ITEM_SEED.map(item => ({
   image_url: MENU_ITEM_IMAGES[item.id] ?? null,
 }));
 
+// Default photo for a seeded dish, matched by name so it still works if the
+// database ids differ. Used when a database row has no image_url yet.
+const DEFAULT_IMAGE_BY_NAME = new Map(
+  INITIAL_MENU_ITEMS.map(item => [item.name.trim().toLowerCase(), item.image_url]),
+);
+
+export function withDefaultMenuImage(item: MenuItem): MenuItem {
+  if (item.image_url) return item;
+  const fallback = DEFAULT_IMAGE_BY_NAME.get(item.name.trim().toLowerCase());
+  return fallback ? { ...item, image_url: fallback } : item;
+}
+
 export const INITIAL_PACKAGES: Package[] = [
   {
     id: 1,
