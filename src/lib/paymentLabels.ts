@@ -1,4 +1,11 @@
-import { PaymentMethod, PaymentType } from '@/types/database';
+import { PaymentMethod, PaymentStatus, PaymentType } from '@/types/database';
+
+// Short status names, matching the tab labels on the Payments pages.
+export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  pending_verification: 'Pending',
+  verified: 'Verified',
+  rejected: 'Rejected',
+};
 
 export const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {
   downpayment: 'Down Payment (50%)',

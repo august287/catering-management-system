@@ -181,10 +181,10 @@ export function Login() {
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
+              <label htmlFor="login-email-address" className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
                 Email Address
               </label>
-              <Input
+              <Input id="login-email-address"
                 type="email"
                 required
                 value={email}
@@ -195,10 +195,10 @@ export function Login() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
+              <label htmlFor="login-password" className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
                 Password
               </label>
-              <PasswordInput
+              <PasswordInput id="login-password"
                 required
                 value={password}
                 onChange={e => setPassword(e.target.value)}

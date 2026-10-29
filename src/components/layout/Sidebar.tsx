@@ -95,7 +95,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       {/* Mobile overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-40 bg-black/50 xl:hidden"
           onClick={onClose}
           aria-hidden="true"
         />
@@ -105,8 +105,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         id="app-sidebar"
         aria-label="Main navigation"
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col bg-ink text-cream transition-[transform,visibility] duration-200 ease-in-out lg:static lg:z-auto lg:w-64 lg:translate-x-0',
-          isOpen ? 'translate-x-0' : '-translate-x-full invisible lg:visible'
+          'fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col bg-ink text-cream transition-[transform,visibility] duration-200 ease-in-out xl:static xl:z-auto xl:w-64 xl:translate-x-0',
+          isOpen ? 'translate-x-0' : '-translate-x-full invisible xl:visible'
         )}
       >
         {/* Brand Header */}
@@ -125,7 +125,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           <button
             type="button"
             onClick={onClose}
-            className="-mr-2 rounded-lg p-2 text-cream/70 hover:bg-ink-soft hover:text-white lg:hidden"
+            className="-mr-2 rounded-lg p-2 text-cream/70 hover:bg-ink-soft hover:text-white xl:hidden"
             aria-label="Close navigation menu"
           >
             <X className="h-5 w-5" />

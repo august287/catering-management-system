@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { mockStore } from '@/lib/mockData';
 import {
@@ -21,6 +21,8 @@ import {
   ReservationStatus,
   PaymentStatus,
 } from '@/types/database';
+
+const DATA_CHANGED_EVENT = 'catering:data-changed';
 
 export function useCateringData() {
   const supabaseActive = isSupabaseConfigured();
@@ -884,6 +886,29 @@ export function useCateringData() {
     }
   };
 
+  // Every component that calls this hook keeps its own copy of the data. After a
+  // successful change, tell the other copies (e.g. sidebar badges, topbar bell)
+  // to reload so counts don't go stale until the window is refocused.
+  const instanceIdRef = useRef(Symbol('catering-data'));
+  const refreshDataRef = useRef(refreshData);
+  refreshDataRef.current = refreshData;
+
+  useEffect(() => {
+    const onChanged = (e: Event) => {
+      if ((e as CustomEvent).detail !== instanceIdRef.current) refreshDataRef.current();
+    };
+    window.addEventListener(DATA_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(DATA_CHANGED_EVENT, onChanged);
+  }, []);
+
+  const withSync =
+    <A extends unknown[], R>(fn: (...args: A) => Promise<R>) =>
+    async (...args: A): Promise<R> => {
+      const result = await fn(...args);
+      window.dispatchEvent(new CustomEvent(DATA_CHANGED_EVENT, { detail: instanceIdRef.current }));
+      return result;
+    };
+
   return {
     themes,
     categories,
@@ -896,22 +921,22 @@ export function useCateringData() {
     profiles,
     loading,
     refreshData,
-    addMenuItem,
-    updateMenuItem,
-    deleteMenuItem,
-    addPackage,
-    updatePackage,
-    deletePackage,
-    addTheme,
-    updateTheme,
-    addRentalItem,
-    updateRentalItem,
-    createReservation,
-    updateReservationStatus,
-    submitPayment,
-    verifyPayment,
-    markNotificationAsRead,
-    markAllNotificationsAsRead,
+    addMenuItem: withSync(addMenuItem),
+    updateMenuItem: withSync(updateMenuItem),
+    deleteMenuItem: withSync(deleteMenuItem),
+    addPackage: withSync(addPackage),
+    updatePackage: withSync(updatePackage),
+    deletePackage: withSync(deletePackage),
+    addTheme: withSync(addTheme),
+    updateTheme: withSync(updateTheme),
+    addRentalItem: withSync(addRentalItem),
+    updateRentalItem: withSync(updateRentalItem),
+    createReservation: withSync(createReservation),
+    updateReservationStatus: withSync(updateReservationStatus),
+    submitPayment: withSync(submitPayment),
+    verifyPayment: withSync(verifyPayment),
+    markNotificationAsRead: withSync(markNotificationAsRead),
+    markAllNotificationsAsRead: withSync(markAllNotificationsAsRead),
   };
 }
 

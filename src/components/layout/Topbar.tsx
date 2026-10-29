@@ -28,7 +28,7 @@ export function Topbar({ title = "Natalie's Catering", sidebarOpen = false, onTo
         <button
           type="button"
           onClick={onToggleSidebar}
-          className="-ml-2 rounded-lg p-2 text-text-muted hover:bg-cream-dark hover:text-text lg:hidden transition-colors"
+          className="-ml-2 rounded-lg p-2 text-text-muted hover:bg-cream-dark hover:text-text xl:hidden transition-colors"
           aria-label="Open navigation menu"
           aria-controls="app-sidebar"
           aria-expanded={sidebarOpen}

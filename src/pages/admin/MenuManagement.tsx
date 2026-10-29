@@ -686,10 +686,10 @@ export function MenuManagement() {
       >
         <form onSubmit={handleSaveItem} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold uppercase text-text-muted mb-1">
+            <label htmlFor="menu-dish-name" className="block text-xs font-semibold uppercase text-text-muted mb-1">
               Dish Name
             </label>
-            <Input
+            <Input id="menu-dish-name"
               required
               value={itemForm.name}
               onChange={e => setItemForm({ ...itemForm, name: e.target.value })}
@@ -722,6 +722,7 @@ export function MenuManagement() {
                   <Input
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
+                    aria-label="Upload dish photo"
                     onChange={handleItemImageChange}
                     disabled={itemImageUploading}
                     className="border-0 bg-transparent file:mr-3 file:rounded-md file:border-0 file:bg-gold file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white hover:file:bg-gold-dark cursor-pointer text-xs"
@@ -740,6 +741,7 @@ export function MenuManagement() {
                 </div>
 
                 <Input
+                  aria-label="Dish image URL"
                   placeholder="Or paste an image URL, e.g. /images/dish.jpg"
                   value={itemForm.image_url.startsWith('data:') ? '' : itemForm.image_url}
                   onChange={e => setItemForm({ ...itemForm, image_url: e.target.value })}
@@ -762,10 +764,10 @@ export function MenuManagement() {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-xs font-semibold uppercase text-text-muted mb-1">
+              <label htmlFor="menu-category" className="block text-xs font-semibold uppercase text-text-muted mb-1">
                 Category
               </label>
-              <Select
+              <Select id="menu-category"
                 value={itemForm.category_id}
                 onChange={e => setItemForm({ ...itemForm, category_id: Number(e.target.value) })}
               >
@@ -777,10 +779,10 @@ export function MenuManagement() {
               </Select>
             </div>
             <div>
-              <label className="block text-xs font-semibold uppercase text-text-muted mb-1">
+              <label htmlFor="menu-price-per-head" className="block text-xs font-semibold uppercase text-text-muted mb-1">
                 Price Per Head (PHP)
               </label>
-              <Input
+              <Input id="menu-price-per-head"
                 type="number"
                 required
                 value={itemForm.price_per_head}
@@ -790,10 +792,10 @@ export function MenuManagement() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase text-text-muted mb-1">
+            <label htmlFor="menu-description-inclusions" className="block text-xs font-semibold uppercase text-text-muted mb-1">
               Description & Inclusions
             </label>
-            <Textarea
+            <Textarea id="menu-description-inclusions"
               rows={3}
               value={itemForm.description}
               onChange={e => setItemForm({ ...itemForm, description: e.target.value })}
@@ -839,10 +841,10 @@ export function MenuManagement() {
       >
         <form onSubmit={handleSavePackage} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold uppercase text-text-muted mb-1">
+            <label htmlFor="menu-package-name" className="block text-xs font-semibold uppercase text-text-muted mb-1">
               Package Name
             </label>
-            <Input
+            <Input id="menu-package-name"
               required
               value={packageForm.name}
               onChange={e => setPackageForm({ ...packageForm, name: e.target.value })}
@@ -852,10 +854,10 @@ export function MenuManagement() {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-xs font-semibold uppercase text-text-muted mb-1">
+              <label htmlFor="menu-rate-pax" className="block text-xs font-semibold uppercase text-text-muted mb-1">
                 Rate / Pax (PHP)
               </label>
-              <Input
+              <Input id="menu-rate-pax"
                 type="number"
                 required
                 value={packageForm.price_per_pax}
@@ -863,10 +865,10 @@ export function MenuManagement() {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold uppercase text-text-muted mb-1">
+              <label htmlFor="menu-minimum-pax" className="block text-xs font-semibold uppercase text-text-muted mb-1">
                 Minimum Pax
               </label>
-              <Input
+              <Input id="menu-minimum-pax"
                 type="number"
                 required
                 min={MIN_GUEST_COUNT}
@@ -881,10 +883,10 @@ export function MenuManagement() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase text-text-muted mb-1">
+            <label htmlFor="menu-linked-event-theme" className="block text-xs font-semibold uppercase text-text-muted mb-1">
               Linked Event Theme (Optional)
             </label>
-            <Select
+            <Select id="menu-linked-event-theme"
               value={packageForm.theme_id}
               onChange={e => setPackageForm({ ...packageForm, theme_id: e.target.value })}
             >
@@ -898,10 +900,10 @@ export function MenuManagement() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase text-text-muted mb-1">
+            <label htmlFor="menu-inclusions-course-breakdown" className="block text-xs font-semibold uppercase text-text-muted mb-1">
               Inclusions & Course Breakdown
             </label>
-            <Textarea
+            <Textarea id="menu-inclusions-course-breakdown"
               rows={4}
               value={packageForm.description}
               onChange={e => setPackageForm({ ...packageForm, description: e.target.value })}
@@ -934,10 +936,10 @@ export function MenuManagement() {
       >
         <form onSubmit={handleSaveRental} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold uppercase text-text-muted mb-1">
+            <label htmlFor="menu-equipment-name" className="block text-xs font-semibold uppercase text-text-muted mb-1">
               Equipment Name
             </label>
-            <Input
+            <Input id="menu-equipment-name"
               required
               value={rentalForm.name}
               onChange={e => setRentalForm({ ...rentalForm, name: e.target.value })}
@@ -947,20 +949,20 @@ export function MenuManagement() {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-xs font-semibold uppercase text-text-muted mb-1">
+              <label htmlFor="menu-category-2" className="block text-xs font-semibold uppercase text-text-muted mb-1">
                 Category
               </label>
-              <Input
+              <Input id="menu-category-2"
                 value={rentalForm.category}
                 onChange={e => setRentalForm({ ...rentalForm, category: e.target.value })}
                 placeholder="Seating / Linens / Tables"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold uppercase text-text-muted mb-1">
+              <label htmlFor="menu-rate-unit" className="block text-xs font-semibold uppercase text-text-muted mb-1">
                 Rate / Unit (PHP)
               </label>
-              <Input
+              <Input id="menu-rate-unit"
                 type="number"
                 required
                 value={rentalForm.rate_per_unit}
@@ -970,10 +972,10 @@ export function MenuManagement() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase text-text-muted mb-1">
+            <label htmlFor="menu-stock-quantity" className="block text-xs font-semibold uppercase text-text-muted mb-1">
               Stock Quantity
             </label>
-            <Input
+            <Input id="menu-stock-quantity"
               type="number"
               required
               value={rentalForm.stock_quantity}

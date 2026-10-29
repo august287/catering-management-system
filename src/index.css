@@ -49,6 +49,22 @@
     white-space: nowrap;
   }
 
+  /* Consistent, compact cell spacing for data tables so they fit laptop
+     screens without sideways scrolling (outer cells keep a wider gutter). */
+  .overflow-x-auto > table th,
+  .overflow-x-auto > table td {
+    padding-left: 0.875rem;
+    padding-right: 0.875rem;
+  }
+  .overflow-x-auto > table th:first-child,
+  .overflow-x-auto > table td:first-child {
+    padding-left: 1.5rem;
+  }
+  .overflow-x-auto > table th:last-child,
+  .overflow-x-auto > table td:last-child {
+    padding-right: 1.5rem;
+  }
+
   /* iOS Safari zooms the page when a focused field is under 16px.
      Keep form text at 16px on phones so layouts don't jump. */
   @media (max-width: 639px) {

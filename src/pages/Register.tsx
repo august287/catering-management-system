@@ -139,10 +139,10 @@ export function Register() {
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
+              <label htmlFor="reg-full-name" className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
                 Full Name
               </label>
-              <Input
+              <Input id="reg-full-name"
                 type="text"
                 required
                 value={name}
@@ -152,10 +152,10 @@ export function Register() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
+              <label htmlFor="reg-contact-phone" className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
                 Contact Phone
               </label>
-              <Input
+              <Input id="reg-contact-phone"
                 type="tel"
                 required
                 value={phone}
@@ -165,10 +165,10 @@ export function Register() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
+              <label htmlFor="reg-email-address" className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
                 Email Address
               </label>
-              <Input
+              <Input id="reg-email-address"
                 type="email"
                 required
                 value={email}
@@ -178,10 +178,10 @@ export function Register() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
+              <label htmlFor="reg-password" className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
                 Password
               </label>
-              <PasswordInput
+              <PasswordInput id="reg-password"
                 required
                 value={password}
                 onChange={e => setPassword(e.target.value)}
@@ -190,10 +190,10 @@ export function Register() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
+              <label htmlFor="reg-confirm-password" className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
                 Confirm Password
               </label>
-              <PasswordInput
+              <PasswordInput id="reg-confirm-password"
                 required
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}

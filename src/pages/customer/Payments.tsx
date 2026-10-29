@@ -21,7 +21,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { Pagination } from '@/components/ui/Pagination';
 import { PaymentReceiptDialog } from '@/components/PaymentReceipt';
 import { formatCurrency, formatDate, isValidPaymentReference, PAYMENT_REFERENCE_MIN_LENGTH, PAYMENT_REFERENCE_MAX_LENGTH } from '@/lib/utils';
-import { PAYMENT_METHOD_LABELS, PAYMENT_TYPE_LABELS } from '@/lib/paymentLabels';
+import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_TYPE_LABELS } from '@/lib/paymentLabels';
 import { PaymentType, PaymentMethod, Payment } from '@/types/database';
 
 export function Payments() {
@@ -330,13 +330,13 @@ export function Payments() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
+                <label htmlFor="pay-select-reservation" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
                   Select Reservation
                 </label>
                 {payableReservations.length === 0 ? (
                   <p className="text-xs text-red-600">No active bookings found to submit payment for.</p>
                 ) : (
-                  <Select
+                  <Select id="pay-select-reservation"
                     value={reservationId}
                     onChange={e => {
                       setReservationId(Number(e.target.value));
@@ -386,10 +386,10 @@ export function Payments() {
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
+                  <label htmlFor="pay-payment-type" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
                     Payment Type
                   </label>
-                  <Select
+                  <Select id="pay-payment-type"
                     value={paymentType}
                     onChange={e => {
                       setPaymentType(e.target.value as PaymentType);
@@ -403,10 +403,10 @@ export function Payments() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
+                  <label htmlFor="pay-payment-method" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
                     Payment Method
                   </label>
-                  <Select
+                  <Select id="pay-payment-method"
                     value={paymentMethod}
                     onChange={e => setPaymentMethod(e.target.value as PaymentMethod)}
                   >
@@ -420,10 +420,10 @@ export function Payments() {
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
+                  <label htmlFor="pay-amount-to-pay" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
                     Amount to Pay (PHP)
                   </label>
-                  <Input
+                  <Input id="pay-amount-to-pay"
                     type="text"
                     inputMode="decimal"
                     autoComplete="off"
@@ -450,14 +450,14 @@ export function Payments() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
+                  <label htmlFor="pay-transaction-reference-no" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
                     Transaction Reference No.
                   </label>
-                  <Input
+                  <Input id="pay-transaction-reference-no"
                     required={paymentMethod !== 'cash'}
                     minLength={PAYMENT_REFERENCE_MIN_LENGTH}
                     maxLength={PAYMENT_REFERENCE_MAX_LENGTH}
-                    pattern="[A-Za-z0-9][A-Za-z0-9._-]{5,79}"
+                    pattern="[A-Za-z0-9][A-Za-z0-9._\-]{5,79}"
                     placeholder={
                       paymentMethod === 'cash'
                         ? 'Optional for cash payments'
@@ -476,14 +476,14 @@ export function Payments() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
+                <label htmlFor="pay-upload-proof-of-payment" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
                   Upload Proof of Payment{' '}
                   <span className="font-normal lowercase text-text-muted">
                     {requiresProof ? '(required)' : '(optional)'}
                   </span>
                 </label>
                 <div className="flex flex-col sm:flex-row items-center gap-4 rounded-lg border-2 border-dashed border-border p-4 bg-cream/40">
-                  <Input
+                  <Input id="pay-upload-proof-of-payment"
                     ref={fileInputRef}
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
@@ -573,12 +573,9 @@ export function Payments() {
             <table className="w-full text-sm text-left">
               <thead className="bg-cream-dark/60 border-b border-border text-xs uppercase font-semibold text-text-muted">
                 <tr>
-                  <th className="px-6 py-3.5">Reference #</th>
-                  <th className="px-6 py-3.5">Booking Code</th>
-                  <th className="px-6 py-3.5">Payment Method</th>
-                  <th className="px-6 py-3.5">Payment Type</th>
-                  <th className="px-6 py-3.5">Amount</th>
-                  <th className="px-6 py-3.5">Date Submitted</th>
+                  <th className="px-6 py-3.5">Reference & Booking</th>
+                  <th className="px-6 py-3.5">Method & Type</th>
+                  <th className="px-6 py-3.5">Amount & Date</th>
                   <th className="px-6 py-3.5">Status</th>
                   <th className="px-6 py-3.5 text-right">Receipt</th>
                 </tr>
@@ -586,7 +583,7 @@ export function Payments() {
               <tbody className="divide-y divide-border">
                 {myPayments.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-10 text-center text-sm text-text-muted">
+                    <td colSpan={5} className="px-6 py-10 text-center text-sm text-text-muted">
                       No payment history recorded yet.
                     </td>
                   </tr>
@@ -595,26 +592,25 @@ export function Payments() {
                     const res = reservations.find(r => r.id === pay.reservation_id);
                     return (
                       <tr key={pay.id} className="hover:bg-cream/40">
-                        <td className="px-6 py-4 font-mono font-bold text-ink text-xs">
-                          {pay.reference_number || 'N/A'}
+                        <td className="px-6 py-4 font-mono text-xs">
+                          <div
+                            className="max-w-[13rem] truncate font-bold text-ink"
+                            title={pay.reference_number || undefined}
+                          >
+                            {pay.reference_number || 'N/A'}
+                          </div>
+                          <div className="text-text-muted">{res?.booking_code || 'RES-?'}</div>
                         </td>
-                        <td className="px-6 py-4 font-mono text-xs text-text">
-                          {res?.booking_code || 'RES-?'}
+                        <td className="px-6 py-4 text-xs">
+                          <div className="font-semibold text-text">{PAYMENT_METHOD_LABELS[pay.payment_method]}</div>
+                          <div className="text-text-muted">{PAYMENT_TYPE_LABELS[pay.payment_type]}</div>
                         </td>
-                        <td className="px-6 py-4 text-xs font-semibold text-text-muted">
-                          {PAYMENT_METHOD_LABELS[pay.payment_method]}
-                        </td>
-                        <td className="px-6 py-4 text-xs text-text-muted">
-                          {PAYMENT_TYPE_LABELS[pay.payment_type]}
-                        </td>
-                        <td className="px-6 py-4 font-bold text-ink text-xs">
-                          {formatCurrency(pay.amount)}
-                        </td>
-                        <td className="px-6 py-4 text-xs text-text-muted">
-                          {formatDate(pay.paid_at)}
+                        <td className="px-6 py-4 text-xs">
+                          <div className="font-bold text-ink">{formatCurrency(pay.amount)}</div>
+                          <div className="text-text-muted">{formatDate(pay.paid_at)}</div>
                         </td>
                         <td className="px-6 py-4">
-                          <Badge variant={pay.status}>{pay.status.replace('_', ' ')}</Badge>
+                          <Badge variant={pay.status}>{PAYMENT_STATUS_LABELS[pay.status]}</Badge>
                         </td>
                         <td className="px-6 py-4 text-right">
                           <Button

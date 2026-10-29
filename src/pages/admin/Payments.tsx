@@ -12,7 +12,7 @@ import { usePagination } from '@/hooks/usePagination';
 import { Pagination } from '@/components/ui/Pagination';
 import { PaymentReceiptDialog } from '@/components/PaymentReceipt';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { PAYMENT_METHOD_LABELS, PAYMENT_TYPE_LABELS } from '@/lib/paymentLabels';
+import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_TYPE_LABELS } from '@/lib/paymentLabels';
 import { Payment } from '@/types/database';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { SearchInput } from '@/components/ui/SearchInput';
@@ -186,12 +186,9 @@ export function Payments() {
             <table className="w-full text-sm text-left">
               <thead className="bg-cream-dark/60 border-b border-border text-xs uppercase font-semibold text-text-muted">
                 <tr>
-                  <th className="px-6 py-3.5">Reference #</th>
-                  <th className="px-6 py-3.5">Booking Code</th>
-                  <th className="px-6 py-3.5">Payment Method</th>
-                  <th className="px-6 py-3.5">Payment Type</th>
-                  <th className="px-6 py-3.5">Amount</th>
-                  <th className="px-6 py-3.5">Submitted Date</th>
+                  <th className="px-6 py-3.5">Reference & Booking</th>
+                  <th className="px-6 py-3.5">Method & Type</th>
+                  <th className="px-6 py-3.5">Amount & Date</th>
                   <th className="px-6 py-3.5">Status</th>
                   <th className="px-6 py-3.5 text-right">Actions</th>
                 </tr>
@@ -199,7 +196,7 @@ export function Payments() {
               <tbody className="divide-y divide-border">
                 {filteredPayments.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center text-sm text-text-muted">
+                    <td colSpan={5} className="px-6 py-12 text-center text-sm text-text-muted">
                       <p>
                         {searchQuery ? 'No payments match your search.' : 'No payments found under this tab.'}
                       </p>
@@ -223,26 +220,25 @@ export function Payments() {
                     const res = reservations.find(r => r.id === pay.reservation_id);
                     return (
                       <tr key={pay.id} className="hover:bg-cream/40 transition-colors">
-                        <td className="px-6 py-4 font-mono font-bold text-ink text-xs">
-                          {pay.reference_number || 'N/A'}
+                        <td className="px-6 py-4 font-mono text-xs">
+                          <div
+                            className="max-w-[13rem] truncate font-bold text-ink"
+                            title={pay.reference_number || undefined}
+                          >
+                            {pay.reference_number || 'N/A'}
+                          </div>
+                          <div className="text-text-muted">{res?.booking_code || 'RES-?'}</div>
                         </td>
-                        <td className="px-6 py-4 font-mono text-xs text-text">
-                          {res?.booking_code || 'RES-?'}
+                        <td className="px-6 py-4 text-xs">
+                          <div className="font-semibold text-text">{PAYMENT_METHOD_LABELS[pay.payment_method]}</div>
+                          <div className="text-text-muted">{PAYMENT_TYPE_LABELS[pay.payment_type]}</div>
                         </td>
-                        <td className="px-6 py-4 text-xs font-semibold text-text-muted">
-                          {PAYMENT_METHOD_LABELS[pay.payment_method]}
-                        </td>
-                        <td className="px-6 py-4 text-xs text-text-muted">
-                          {PAYMENT_TYPE_LABELS[pay.payment_type]}
-                        </td>
-                        <td className="px-6 py-4 font-bold text-ink text-xs">
-                          {formatCurrency(pay.amount)}
-                        </td>
-                        <td className="px-6 py-4 text-xs text-text-muted">
-                          {formatDate(pay.paid_at)}
+                        <td className="px-6 py-4 text-xs">
+                          <div className="font-bold text-ink">{formatCurrency(pay.amount)}</div>
+                          <div className="text-text-muted">{formatDate(pay.paid_at)}</div>
                         </td>
                         <td className="px-6 py-4">
-                          <Badge variant={pay.status}>{pay.status.replace('_', ' ')}</Badge>
+                          <Badge variant={pay.status}>{PAYMENT_STATUS_LABELS[pay.status]}</Badge>
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
@@ -261,9 +257,12 @@ export function Payments() {
                               variant="outline"
                               size="sm"
                               onClick={() => handleOpenProof(pay)}
-                              className="gap-1 text-xs"
+                              className="h-8 gap-1 px-2 text-xs"
+                              title="View payment proof"
+                              aria-label={`View payment proof ${pay.reference_number || ''}`}
                             >
-                              <Eye className="h-3.5 w-3.5" /> Proof
+                              <Eye className="h-4 w-4" />
+                              <span className="hidden 2xl:inline">Proof</span>
                             </Button>
 
                             {pay.status === 'pending_verification' && (
@@ -277,7 +276,7 @@ export function Payments() {
                                   aria-label="Verify payment"
                                 >
                                   <CheckCircle className="h-4 w-4" />
-                                  <span className="hidden xl:inline">Verify</span>
+                                  <span className="hidden 2xl:inline">Verify</span>
                                 </Button>
                                 <Button
                                   variant="destructive"
@@ -288,7 +287,7 @@ export function Payments() {
                                   aria-label="Reject payment"
                                 >
                                   <XCircle className="h-4 w-4" />
-                                  <span className="hidden xl:inline">Reject</span>
+                                  <span className="hidden 2xl:inline">Reject</span>
                                 </Button>
                               </>
                             )}
@@ -354,7 +353,7 @@ export function Payments() {
               <div>
                 <span className="text-text-muted">Status:</span>
                 <p className="font-bold">
-                  <Badge variant={selectedProof.status}>{selectedProof.status.replace('_', ' ')}</Badge>
+                  <Badge variant={selectedProof.status}>{PAYMENT_STATUS_LABELS[selectedProof.status]}</Badge>
                 </p>
               </div>
               <div>
