@@ -67,6 +67,6 @@ npm run build
 - **UI Framework:** React 18 + TypeScript
 - **Styling:** Tailwind CSS + custom tokens (`#17140f`, `#a9822f`, `#faf8f4`)
 - **Routing:** React Router v6
-- **Database & Auth:** Supabase (Postgres + Storage + RLS)
+- **Database & Auth:** Supabase
 - **Visual Analytics:** Recharts / Tremor aesthetics
 - **Icons:** Lucide React
