@@ -196,6 +196,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           password,
           options: {
             data: { name, phone, role: 'customer' },
+            // Send the confirmation link back to the site the user signed up on.
+            // Supabase only honors this if it's listed under Auth > URL Configuration > Redirect URLs.
+            emailRedirectTo: `${window.location.origin}/`,
           },
         });
         if (error) throw error;
