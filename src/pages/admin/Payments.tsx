@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, Eye, Search, CreditCard, Image as ImageIcon, Printer } from 'lucide-react';
+import { CheckCircle, XCircle, Eye, Image as ImageIcon, Printer } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -15,6 +15,8 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import { PAYMENT_METHOD_LABELS, PAYMENT_TYPE_LABELS } from '@/lib/paymentLabels';
 import { Payment } from '@/types/database';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { SearchInput } from '@/components/ui/SearchInput';
+import { useToast } from '@/components/ui/Toast';
 
 export function Payments() {
   const { payments, verifyPayment, reservations, profiles, themes, packages } = useCateringData();
@@ -27,6 +29,7 @@ export function Payments() {
 
   const [paymentAction, setPaymentAction] = useState<{ id: number; status: 'verified' | 'rejected' } | null>(null);
   const [actionError, setActionError] = useState('');
+  const { toast } = useToast();
 
   // BUG-10: Resolve storage paths to signed URLs for secure admin inspection
   useEffect(() => {
@@ -100,8 +103,16 @@ export function Payments() {
       await verifyPayment(id, status);
     } catch (err: any) {
       setActionError(err?.message || 'Could not update the payment. Please try again.');
+      toast({ tone: 'error', title: 'Payment not updated', description: 'See the message at the top of the page.' });
       return;
     }
+    toast({
+      title: status === 'verified' ? 'Payment verified' : 'Payment rejected',
+      description:
+        status === 'verified'
+          ? 'The amount has been credited to the reservation.'
+          : 'The customer will be asked to submit again.',
+    });
     if (selectedProof?.id === id) {
       setSelectedProof(prev => (prev ? { ...prev, status } : null));
     }
@@ -141,7 +152,7 @@ export function Payments() {
 
       <div className="space-y-4">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-4 w-full max-w-lg">
+          <TabsList>
             <TabsTrigger value="pending">
               Pending ({pendingCount})
             </TabsTrigger>
@@ -157,15 +168,13 @@ export function Payments() {
 
         <Card>
           <CardContent className="p-4">
-            <div className="relative max-w-md">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-text-muted" />
-              <Input
-                placeholder="Search by reference number or booking code..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="pl-9 text-xs"
-              />
-            </div>
+            <SearchInput
+              wrapperClassName="max-w-md"
+              placeholder="Search by reference number or booking code..."
+              value={searchQuery}
+              onValueChange={setSearchQuery}
+              className="text-xs"
+            />
           </CardContent>
         </Card>
       </div>
@@ -191,7 +200,22 @@ export function Payments() {
                 {filteredPayments.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-6 py-12 text-center text-sm text-text-muted">
-                      No payments found under this tab.
+                      <p>
+                        {searchQuery ? 'No payments match your search.' : 'No payments found under this tab.'}
+                      </p>
+                      {(searchQuery || activeTab !== 'all') && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSearchQuery('');
+                            setActiveTab('all');
+                          }}
+                          className="mt-3 text-xs"
+                        >
+                          Show all payments
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -228,6 +252,7 @@ export function Payments() {
                               onClick={() => setReceiptPayment(pay)}
                               className="h-8 px-2 text-xs"
                               title="View & Print Receipt"
+                              aria-label={`View and print receipt ${pay.reference_number || ''}`}
                             >
                               <Printer className="h-4 w-4" />
                             </Button>
@@ -247,19 +272,23 @@ export function Payments() {
                                   variant="gold"
                                   size="sm"
                                   onClick={() => setPaymentAction({ id: pay.id, status: 'verified' })}
-                                  className="h-8 px-2 text-xs"
+                                  className="h-8 gap-1 px-2 text-xs"
                                   title="Approve & Verify"
+                                  aria-label="Verify payment"
                                 >
                                   <CheckCircle className="h-4 w-4" />
+                                  <span className="hidden xl:inline">Verify</span>
                                 </Button>
                                 <Button
                                   variant="destructive"
                                   size="sm"
                                   onClick={() => setPaymentAction({ id: pay.id, status: 'rejected' })}
-                                  className="h-8 px-2 text-xs"
+                                  className="h-8 gap-1 px-2 text-xs"
                                   title="Reject Payment"
+                                  aria-label="Reject payment"
                                 >
                                   <XCircle className="h-4 w-4" />
+                                  <span className="hidden xl:inline">Reject</span>
                                 </Button>
                               </>
                             )}
@@ -300,7 +329,7 @@ export function Payments() {
                 <img
                   src={displayProofUrl || selectedProof.proof_image_url}
                   alt="Proof of Payment"
-                  className="max-h-[350px] w-auto rounded object-contain"
+                  className="max-h-[50vh] sm:max-h-[350px] w-auto max-w-full rounded object-contain"
                   onError={e => {
                     (e.target as HTMLImageElement).src = '/images/receipt_sample.svg';
                   }}
@@ -335,7 +364,7 @@ export function Payments() {
             </div>
 
             {selectedProof.status === 'pending_verification' && (
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
+              <div className="flex flex-col-reverse gap-2 pt-3 border-t border-border sm:flex-row sm:items-center sm:justify-end">
                 <Button
                   variant="destructive"
                   onClick={() => {

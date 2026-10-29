@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -15,6 +15,7 @@ import {
   Utensils,
   ShieldCheck,
   User,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useCateringData } from '@/hooks/useCateringData';
@@ -44,6 +45,15 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const unreadNotificationsCount = notifications.filter(
     n => !n.is_read && (role === 'admin' ? (n.user_id === profile?.id || n.user_id === '00000000-0000-0000-0000-000000000001') : (profile?.id ? n.user_id === profile.id : false))
   ).length;
+  const notifBadge = unreadNotificationsCount > 0 ? unreadNotificationsCount : undefined;
+
+  // Escape closes the mobile drawer
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose?.();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
   const adminNav: NavItem[] = [
     { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -62,6 +72,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       badge: pendingPaymentsCount > 0 ? pendingPaymentsCount : undefined,
     },
     { to: '/admin/reports', label: 'Reports & Analytics', icon: BarChart3 },
+    { to: '/admin/notifications', label: 'Notifications', icon: Bell, badge: notifBadge },
   ];
 
   const customerNav: NavItem[] = [
@@ -69,6 +80,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     { to: '/customer/book', label: 'Book Reservation', icon: CalendarPlus },
     { to: '/customer/reservations', label: 'My Reservations', icon: Clock },
     { to: '/customer/payments', label: 'Payments', icon: CreditCard },
+    { to: '/customer/notifications', label: 'Notifications', icon: Bell, badge: notifBadge },
   ];
 
   const navItems = role === 'admin' ? adminNav : customerNav;
@@ -85,28 +97,39 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
           onClick={onClose}
+          aria-hidden="true"
         />
       )}
 
       <aside
+        id="app-sidebar"
+        aria-label="Main navigation"
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-ink text-cream transition-transform duration-200 ease-in-out lg:static lg:translate-x-0',
-          isOpen ? 'translate-x-0' : '-translate-x-full'
+          'fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col bg-ink text-cream transition-[transform,visibility] duration-200 ease-in-out lg:static lg:z-auto lg:w-64 lg:translate-x-0',
+          isOpen ? 'translate-x-0' : '-translate-x-full invisible lg:visible'
         )}
       >
         {/* Brand Header */}
-        <div className="flex h-16 items-center gap-3 border-b border-ink-muted/40 px-6">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold text-ink font-bold shadow-sm">
+        <div className="flex h-16 shrink-0 items-center gap-3 border-b border-ink-muted/40 px-6">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gold text-ink font-bold shadow-sm">
             <Utensils className="h-5 w-5 text-white" />
           </div>
-          <div>
-            <h1 className="font-serif text-lg font-bold tracking-tight text-white leading-tight">
+          <div className="min-w-0 flex-1">
+            <p className="font-serif text-lg font-bold tracking-tight text-white leading-tight truncate">
               Natalie's Catering
-            </h1>
+            </p>
             <p className="text-[10px] uppercase tracking-wider text-gold-light/70 font-semibold">
               Catering System
             </p>
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="-mr-2 rounded-lg p-2 text-cream/70 hover:bg-ink-soft hover:text-white lg:hidden"
+            aria-label="Close navigation menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
         {/* Role Pill Indicator */}
@@ -146,8 +169,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   <span>{item.label}</span>
                 </div>
                 {item.badge !== undefined && (
-                  <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-gold px-1.5 text-[11px] font-bold text-white">
-                    {item.badge}
+                  <span
+                    className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-gold px-1.5 text-[11px] font-bold text-white"
+                    aria-label={`${item.badge} pending`}
+                  >
+                    {item.badge > 99 ? '99+' : item.badge}
                   </span>
                 )}
               </NavLink>
@@ -168,11 +194,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               </div>
             </div>
             <button
+              type="button"
               onClick={() => setShowLogoutModal(true)}
               title="Sign out"
-              className="rounded p-1.5 text-cream/60 hover:bg-ink hover:text-red-400 transition-colors"
+              aria-label="Sign out"
+              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-cream/70 hover:bg-ink hover:text-red-400 transition-colors"
             >
               <LogOut className="h-4 w-4" />
+              <span>Sign out</span>
             </button>
           </div>
         </div>

@@ -96,7 +96,7 @@ export function ConfirmationModal({
         )}
 
         {/* Actions */}
-        <div className="mt-6 flex w-full gap-3">
+        <div className="mt-6 flex w-full flex-col-reverse gap-2 sm:flex-row sm:gap-3">
           <Button
             variant="outline"
             className="flex-1"

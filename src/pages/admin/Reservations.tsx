@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, Search, Filter, Calendar, MapPin, Users, Utensils } from 'lucide-react';
+import { Eye, Calendar, MapPin, Users, Utensils } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
@@ -12,6 +12,17 @@ import { usePagination } from '@/hooks/usePagination';
 import { Pagination } from '@/components/ui/Pagination';
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
 import { Reservation, ReservationStatus } from '@/types/database';
+import { SearchInput } from '@/components/ui/SearchInput';
+import { ConfirmationModal } from '@/components/ui/Modal';
+import { useToast } from '@/components/ui/Toast';
+
+const STATUS_LABELS: Record<ReservationStatus, string> = {
+  pending: 'Pending',
+  confirmed: 'Confirmed',
+  in_progress: 'In Progress',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+};
 
 export function Reservations() {
   const { reservations, updateReservationStatus, profiles, themes, packages, rentals, payments } =
@@ -22,6 +33,9 @@ export function Reservations() {
   const [selectedRes, setSelectedRes] = useState<Reservation | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [statusError, setStatusError] = useState('');
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<ReservationStatus | null>(null);
+  const { toast } = useToast();
 
   const filteredReservations = reservations.filter(res => {
     const cust = profiles.find(p => p.id === res.customer_id);
@@ -51,16 +65,38 @@ export function Reservations() {
     setDetailModalOpen(true);
   };
 
-  const handleStatusChange = async (newStatus: ReservationStatus) => {
+  const applyStatusChange = async (newStatus: ReservationStatus) => {
     if (!selectedRes) return;
     setStatusError('');
+    setStatusSaving(true);
     try {
       await updateReservationStatus(selectedRes.id, newStatus);
     } catch (err: any) {
       setStatusError(err?.message || 'Could not update the reservation. Please try again.');
       return;
+    } finally {
+      setStatusSaving(false);
     }
     setSelectedRes({ ...selectedRes, status: newStatus });
+    toast({
+      title: 'Reservation updated',
+      description: `${selectedRes.booking_code} is now ${STATUS_LABELS[newStatus]}.`,
+    });
+  };
+
+  // Cancelling or completing a booking is hard to undo, so ask first.
+  const handleStatusChange = (newStatus: ReservationStatus) => {
+    if (newStatus === 'cancelled' || newStatus === 'completed') {
+      setPendingStatus(newStatus);
+      return;
+    }
+    applyStatusChange(newStatus);
+  };
+
+  const hasFilters = activeTab !== 'all' || searchQuery !== '';
+  const clearFilters = () => {
+    setActiveTab('all');
+    setSearchQuery('');
   };
 
   // Find payments for the selected reservation
@@ -90,7 +126,7 @@ export function Reservations() {
       {/* Tabs & Search */}
       <div className="space-y-4">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-6 w-full max-w-2xl">
+          <TabsList>
             <TabsTrigger value="all">All ({reservations.length})</TabsTrigger>
             <TabsTrigger value="pending">
               Pending ({reservations.filter(r => r.status === 'pending').length})
@@ -112,15 +148,13 @@ export function Reservations() {
 
         <Card>
           <CardContent className="p-4">
-            <div className="relative max-w-md">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-text-muted" />
-              <Input
-                placeholder="Search by booking code, customer name, or venue..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="pl-9 text-xs"
-              />
-            </div>
+            <SearchInput
+              wrapperClassName="max-w-md"
+              placeholder="Search by booking code, customer name, or venue..."
+              value={searchQuery}
+              onValueChange={setSearchQuery}
+              className="text-xs"
+            />
           </CardContent>
         </Card>
       </div>
@@ -145,7 +179,12 @@ export function Reservations() {
                 {                  filteredReservations.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-12 text-center text-sm text-text-muted">
-                      No reservations found for this filter.
+                      <p>No reservations match your filters.</p>
+                      {hasFilters && (
+                        <Button variant="outline" size="sm" onClick={clearFilters} className="mt-3 text-xs">
+                          Clear filters
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -181,6 +220,7 @@ export function Reservations() {
                             size="sm"
                             onClick={() => handleOpenDetails(res)}
                             className="gap-1 text-xs"
+                            aria-label={`View details for ${res.booking_code}`}
                           >
                             <Eye className="h-3.5 w-3.5" /> Details
                           </Button>
@@ -224,12 +264,17 @@ export function Reservations() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-text-muted">Update:</span>
+              <div className="flex w-full items-center gap-2 sm:w-auto">
+                <label htmlFor="res-status" className="text-xs font-semibold text-text-muted">
+                  Update:
+                </label>
+                <div className="flex-1 sm:flex-none">
                 <Select
+                  id="res-status"
                   value={selectedRes.status}
                   onChange={e => handleStatusChange(e.target.value as ReservationStatus)}
-                  className="h-8 text-xs py-1"
+                  disabled={statusSaving}
+                  className="h-9 text-xs py-1"
                 >
                   <option value="pending">Pending</option>
                   <option value="confirmed">Confirmed</option>
@@ -237,6 +282,8 @@ export function Reservations() {
                   <option value="completed">Completed</option>
                   <option value="cancelled">Cancelled</option>
                 </Select>
+                </div>
+                {statusSaving && <span className="text-xs text-text-muted" role="status">Saving…</span>}
               </div>
             </div>
 
@@ -247,14 +294,14 @@ export function Reservations() {
             )}
 
             {/* Event Summary Grid */}
-            <div className="grid grid-cols-2 gap-4 text-xs">
+            <div className="grid grid-cols-1 gap-4 text-xs sm:grid-cols-2">
               <div className="rounded-lg border border-border p-3 space-y-1">
                 <div className="flex items-center gap-1.5 font-bold text-text-muted uppercase">
                   <Users className="h-3.5 w-3.5 text-gold" /> Customer Information
                 </div>
                 <p className="font-semibold text-ink text-sm">{selectedCust?.name || 'Customer'}</p>
                 <p className="text-text-muted">Phone: {selectedCust?.phone || 'N/A'}</p>
-                <p className="text-text-muted">ID: {selectedRes.customer_id}</p>
+                <p className="text-text-muted break-all">ID: {selectedRes.customer_id}</p>
               </div>
 
               <div className="rounded-lg border border-border p-3 space-y-1">
@@ -279,7 +326,7 @@ export function Reservations() {
 
             {/* Package & Rental Breakdown */}
             <div className="rounded-lg border border-border p-4 text-xs space-y-3">
-              <div className="flex items-center justify-between border-b border-border pb-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2">
                 <span className="font-bold text-ink uppercase flex items-center gap-1">
                   <Utensils className="h-3.5 w-3.5 text-gold" /> Catering Package
                 </span>
@@ -322,13 +369,31 @@ export function Reservations() {
             </div>
 
             <div className="flex justify-end pt-2">
-              <Button variant="default" onClick={() => setDetailModalOpen(false)}>
+              <Button variant="default" onClick={() => setDetailModalOpen(false)} className="w-full sm:w-auto">
                 Close
               </Button>
             </div>
           </div>
         </Dialog>
       )}
+
+      <ConfirmationModal
+        open={pendingStatus !== null}
+        onOpenChange={open => !open && setPendingStatus(null)}
+        onConfirm={() => {
+          if (pendingStatus) applyStatusChange(pendingStatus);
+          setPendingStatus(null);
+        }}
+        variant={pendingStatus === 'cancelled' ? 'danger' : 'warning'}
+        title={pendingStatus === 'cancelled' ? 'Cancel this reservation?' : 'Mark as completed?'}
+        description={
+          pendingStatus === 'cancelled'
+            ? `${selectedRes?.booking_code ?? 'This booking'} will be cancelled and the customer will no longer be able to submit payments for it.`
+            : `${selectedRes?.booking_code ?? 'This booking'} will be closed. The customer will no longer be able to submit payments for it.`
+        }
+        confirmLabel={pendingStatus === 'cancelled' ? 'Yes, cancel booking' : 'Mark completed'}
+        cancelLabel="Keep current status"
+      />
     </div>
   );
 }

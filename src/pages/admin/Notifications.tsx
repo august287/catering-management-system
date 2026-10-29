@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useCateringData } from '@/hooks/useCateringData';
 import { formatDate } from '@/lib/utils';
+import { useToast } from '@/components/ui/Toast';
 
 import { useAuth } from '@/hooks/useAuth';
 
@@ -12,6 +13,7 @@ export function Notifications() {
   const { notifications, markNotificationAsRead, markAllNotificationsAsRead } = useCateringData();
   const { profile } = useAuth();
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const { toast } = useToast();
 
   const adminId = profile?.id || '00000000-0000-0000-0000-000000000001';
   const myAdminNotifs = notifications.filter(
@@ -51,6 +53,7 @@ export function Notifications() {
               if (adminId !== '00000000-0000-0000-0000-000000000001') {
                 await markAllNotificationsAsRead('00000000-0000-0000-0000-000000000001');
               }
+              toast({ title: 'All notifications marked as read' });
             }}
             className="gap-1.5 text-xs self-start"
           >
@@ -60,12 +63,13 @@ export function Notifications() {
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-border">
-          <div className="flex items-center gap-2">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 p-4 pb-3 border-b border-border sm:p-6 sm:pb-3">
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter notifications">
             <Button
               variant={filter === 'all' ? 'gold' : 'ghost'}
               size="sm"
               onClick={() => setFilter('all')}
+              aria-pressed={filter === 'all'}
               className="text-xs h-8"
             >
               All Alerts ({myAdminNotifs.length})
@@ -74,6 +78,7 @@ export function Notifications() {
               variant={filter === 'unread' ? 'gold' : 'ghost'}
               size="sm"
               onClick={() => setFilter('unread')}
+              aria-pressed={filter === 'unread'}
               className="text-xs h-8"
             >
               Unread ({unreadCount})
@@ -85,13 +90,13 @@ export function Notifications() {
             {adminNotifs.length === 0 ? (
               <div className="py-12 text-center text-sm text-text-muted">
                 <Bell className="h-8 w-8 mx-auto text-text-faint mb-2 opacity-50" />
-                No notifications found.
+                {filter === 'unread' ? "You're all caught up — no unread alerts." : 'No notifications yet.'}
               </div>
             ) : (
               adminNotifs.map(notif => (
                 <div
                   key={notif.id}
-                  className={`flex items-start justify-between gap-4 p-5 transition-colors ${
+                  className={`flex flex-col gap-3 p-4 transition-colors sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:p-5 ${
                     notif.is_read ? 'bg-white' : 'bg-cream-dark/30 font-medium'
                   }`}
                 >
@@ -116,7 +121,7 @@ export function Notifications() {
                       variant="ghost"
                       size="sm"
                       onClick={() => markNotificationAsRead(notif.id)}
-                      className="text-xs gap-1 shrink-0 text-text-muted hover:text-gold"
+                      className="text-xs gap-1 shrink-0 self-end text-text-muted hover:text-gold sm:self-auto"
                     >
                       <Check className="h-3.5 w-3.5" /> Mark read
                     </Button>

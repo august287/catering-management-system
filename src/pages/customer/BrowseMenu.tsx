@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Sparkles, ArrowRight, Utensils, CalendarPlus, Check, Search } from 'lucide-react';
+import { Sparkles, ArrowRight, Utensils, CalendarPlus, Check } from 'lucide-react';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -29,7 +30,7 @@ export function BrowseMenu() {
     <div className="space-y-8">
       {/* Luxury Hero Banner */}
       <div
-        className="relative overflow-hidden rounded-2xl bg-ink p-8 sm:p-12 text-white shadow-pop bg-cover bg-center"
+        className="relative overflow-hidden rounded-2xl bg-ink p-6 sm:p-12 text-white shadow-pop bg-cover bg-center"
         style={{
           backgroundImage:
             "linear-gradient(rgba(23, 20, 15, 0.75), rgba(23, 20, 15, 0.90)), url('/images/7.jpg')",
@@ -63,7 +64,7 @@ export function BrowseMenu() {
       {/* Main Tabs Navigation */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border pb-4">
-          <TabsList className="grid grid-cols-3 w-full max-w-md">
+          <TabsList>
             <TabsTrigger value="themes">Event Themes ({activeThemes.length})</TabsTrigger>
             <TabsTrigger value="food">Dishes & Menu ({menuItems.length})</TabsTrigger>
             <TabsTrigger value="rentals">Banquet Rentals ({rentals.length})</TabsTrigger>
@@ -141,10 +142,11 @@ export function BrowseMenu() {
         <TabsContent value="food" className="pt-4 space-y-6">
           {/* Categories pill bar & Search */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by category">
               <button
                 onClick={() => setSelectedCat('all')}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
+                aria-pressed={selectedCat === 'all'}
+                className={`rounded-full px-3 py-2 text-xs font-semibold transition-all sm:py-1.5 ${
                   selectedCat === 'all'
                     ? 'bg-ink text-white shadow-sm'
                     : 'bg-white border border-border text-text-muted hover:bg-cream-dark'
@@ -156,7 +158,8 @@ export function BrowseMenu() {
                 <button
                   key={c.id}
                   onClick={() => setSelectedCat(c.id.toString())}
-                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
+                  aria-pressed={selectedCat === c.id.toString()}
+                  className={`rounded-full px-3 py-2 text-xs font-semibold transition-all sm:py-1.5 ${
                     selectedCat === c.id.toString()
                       ? 'bg-ink text-white shadow-sm'
                       : 'bg-white border border-border text-text-muted hover:bg-cream-dark'
@@ -167,16 +170,32 @@ export function BrowseMenu() {
               ))}
             </div>
 
-            <div className="relative max-w-xs">
-              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-text-muted" />
-              <Input
-                placeholder="Search dishes..."
-                value={foodSearch}
-                onChange={e => setFoodSearch(e.target.value)}
-                className="pl-8 text-xs h-9"
-              />
-            </div>
+            <SearchInput
+              wrapperClassName="sm:max-w-xs"
+              placeholder="Search dishes..."
+              value={foodSearch}
+              onValueChange={setFoodSearch}
+              className="text-xs"
+            />
           </div>
+
+          {filteredFood.length === 0 && (
+            <Card className="p-10 text-center">
+              <Utensils className="mx-auto mb-2 h-8 w-8 text-text-faint" aria-hidden="true" />
+              <p className="text-sm text-text-muted">No dishes match your search.</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3 text-xs"
+                onClick={() => {
+                  setFoodSearch('');
+                  setSelectedCat('all');
+                }}
+              >
+                Show all dishes
+              </Button>
+            </Card>
+          )}
 
           {/* Dishes Grid */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

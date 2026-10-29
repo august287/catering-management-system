@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '@/hooks/useAuth';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import AppShell from '@/components/layout/AppShell';
+import { ToastProvider } from '@/components/ui/Toast';
 
 // Landing & Auth Pages
 import LandingPage from '@/pages/LandingPage';
@@ -38,6 +39,7 @@ function LandingOrRedirect() {
 export function App() {
   return (
     <AuthProvider>
+      <ToastProvider>
       <BrowserRouter>
         <Routes>
           {/* Public Authentication Routes */}
@@ -88,6 +90,7 @@ export function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      </ToastProvider>
     </AuthProvider>
   );
 }

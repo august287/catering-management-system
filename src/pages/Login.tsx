@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { PasswordInput } from '@/components/ui/PasswordInput';
 import { Utensils, AlertCircle, Shield, User } from 'lucide-react';
 import logo from '/public/images/natalielogo.jpg';
 
@@ -168,7 +169,7 @@ export function Login() {
           <p className="mt-2 text-sm text-text-muted">Sign in to manage bookings, menus, and payments.</p>
 
           {(error || lockoutTime > 0) && (
-            <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div role="alert" className="mt-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>
                 {lockoutTime > 0 
@@ -197,8 +198,7 @@ export function Login() {
               <label className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
                 Password
               </label>
-              <Input
-                type="password"
+              <PasswordInput
                 required
                 value={password}
                 onChange={e => setPassword(e.target.value)}

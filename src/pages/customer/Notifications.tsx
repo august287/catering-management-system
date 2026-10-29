@@ -6,10 +6,12 @@ import { Badge } from '@/components/ui/Badge';
 import { useAuth } from '@/hooks/useAuth';
 import { useCateringData } from '@/hooks/useCateringData';
 import { formatDate } from '@/lib/utils';
+import { useToast } from '@/components/ui/Toast';
 
 export function Notifications() {
   const { profile } = useAuth();
   const { notifications, markNotificationAsRead, markAllNotificationsAsRead } = useCateringData();
+  const { toast } = useToast();
 
   // Filter notifications belonging to this customer
   const currentUserId = profile?.id || '';
@@ -36,7 +38,10 @@ export function Notifications() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => markAllNotificationsAsRead(currentUserId)}
+            onClick={async () => {
+              await markAllNotificationsAsRead(currentUserId);
+              toast({ title: 'All notifications marked as read' });
+            }}
             className="gap-1.5 text-xs self-start"
           >
             <CheckCheck className="h-4 w-4 text-gold" /> Mark All as Read
@@ -56,7 +61,7 @@ export function Notifications() {
               myNotifications.map(notif => (
                 <div
                   key={notif.id}
-                  className={`flex items-start justify-between gap-4 p-5 transition-colors ${
+                  className={`flex flex-col gap-3 p-4 transition-colors sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:p-5 ${
                     notif.is_read ? 'bg-white' : 'bg-cream-dark/30 font-medium'
                   }`}
                 >
@@ -81,7 +86,7 @@ export function Notifications() {
                       variant="ghost"
                       size="sm"
                       onClick={() => markNotificationAsRead(notif.id)}
-                      className="text-xs gap-1 shrink-0 text-text-muted hover:text-gold"
+                      className="text-xs gap-1 shrink-0 self-end text-text-muted hover:text-gold sm:self-auto"
                     >
                       <Check className="h-3.5 w-3.5" /> Mark read
                     </Button>

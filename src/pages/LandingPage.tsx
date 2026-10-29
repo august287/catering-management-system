@@ -136,7 +136,7 @@ export function LandingPage() {
 
       {/* ─── Hero Section ─── */}
       <section
-        className="relative flex min-h-screen items-center justify-center overflow-hidden bg-cover bg-center bg-no-repeat"
+        className="relative flex min-h-screen min-h-[100svh] items-center justify-center overflow-hidden bg-cover bg-center bg-no-repeat"
         style={{
           backgroundImage:
             "linear-gradient(rgba(23, 20, 15, 0.60), rgba(23, 20, 15, 0.82)), url('/images/bday-girl.jpg')",

@@ -29,8 +29,9 @@ export function Tabs({
 export function TabsList({ className, children }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      role="tablist"
       className={cn(
-        'inline-flex items-center gap-1 rounded-lg border border-border bg-cream-dark/50 p-1 text-text-muted',
+        'flex max-w-full items-center gap-1 overflow-x-auto rounded-lg border border-border bg-cream-dark/50 p-1 text-text-muted scrollbar-none sm:inline-flex',
         className
       )}
     >
@@ -54,9 +55,11 @@ export function TabsTrigger({
   return (
     <button
       type="button"
+      role="tab"
+      aria-selected={isActive}
       onClick={() => context?.onValueChange(value)}
       className={cn(
-        'inline-flex items-center justify-center whitespace-nowrap rounded-md px-3.5 py-1.5 text-sm font-medium transition-all',
+        'inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold sm:py-1.5',
         isActive
           ? 'bg-white text-ink shadow-sm font-semibold'
           : 'text-text-muted hover:text-text hover:bg-white/50',
@@ -80,5 +83,5 @@ export function TabsContent({
   const context = useContext(TabsContext);
   if (context?.value !== value) return null;
 
-  return <div className={cn('mt-4 focus-visible:outline-none', className)}>{children}</div>;
+  return <div role="tabpanel" className={cn('mt-4 focus-visible:outline-none', className)}>{children}</div>;
 }

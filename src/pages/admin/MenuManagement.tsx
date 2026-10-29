@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Edit, Trash2, CheckCircle2, XCircle, Search, Image as ImageIcon, Upload } from 'lucide-react';
+import { Plus, Edit, Trash2, CheckCircle2, XCircle, Image as ImageIcon, Upload } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -15,6 +15,8 @@ import { Pagination } from '@/components/ui/Pagination';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatCurrency, MIN_GUEST_COUNT, MAX_GUEST_COUNT } from '@/lib/utils';
 import { MenuItem, Package, EventTheme, RentalItem } from '@/types/database';
+import { SearchInput } from '@/components/ui/SearchInput';
+import { useToast } from '@/components/ui/Toast';
 
 export function MenuManagement() {
   const {
@@ -77,8 +79,37 @@ export function MenuManagement() {
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
   const [packageToDelete, setPackageToDelete] = useState<number | null>(null);
 
+  // Shared save state so every form shows progress and explains failures.
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+  const { toast } = useToast();
+
+  const runSave = async (action: () => Promise<unknown>, onDone: () => void, successTitle: string) => {
+    setFormError('');
+    setSaving(true);
+    try {
+      await action();
+      onDone();
+      toast({ title: successTitle });
+    } catch (err: any) {
+      setFormError(err?.message || 'Could not save your changes. Please check the details and try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const runQuickAction = async (action: () => Promise<unknown>, successTitle: string, description?: string) => {
+    try {
+      await action();
+      toast({ title: successTitle, description });
+    } catch (err: any) {
+      toast({ tone: 'error', title: 'Action failed', description: err?.message || 'Please try again.' });
+    }
+  };
+
   // --- Handlers for Menu Items ---
   const handleOpenItemDialog = (item?: MenuItem) => {
+    setFormError('');
     setItemImageError('');
     if (item) {
       setEditingItem(item);
@@ -150,6 +181,7 @@ export function MenuManagement() {
 
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
+    await runSave(async () => {
     if (editingItem) {
       await updateMenuItem(editingItem.id, {
         name: itemForm.name,
@@ -169,11 +201,12 @@ export function MenuManagement() {
         is_available: itemForm.is_available,
       });
     }
-    setItemDialogOpen(false);
+    }, () => setItemDialogOpen(false), editingItem ? 'Dish updated' : 'Dish added to the menu');
   };
 
   // --- Handlers for Packages ---
   const handleOpenPackageDialog = (pkg?: Package) => {
+    setFormError('');
     if (pkg) {
       setEditingPackage(pkg);
       setPackageForm({
@@ -199,6 +232,7 @@ export function MenuManagement() {
   const handleSavePackage = async (e: React.FormEvent) => {
     e.preventDefault();
     const themeIdNum = packageForm.theme_id ? Number(packageForm.theme_id) : null;
+    await runSave(async () => {
     if (editingPackage) {
       await updatePackage(editingPackage.id, {
         name: packageForm.name,
@@ -216,11 +250,12 @@ export function MenuManagement() {
         theme_id: themeIdNum,
       });
     }
-    setPackageDialogOpen(false);
+    }, () => setPackageDialogOpen(false), editingPackage ? 'Package updated' : 'Package created');
   };
 
   // --- Handlers for Rentals ---
   const handleOpenRentalDialog = (rental?: RentalItem) => {
+    setFormError('');
     if (rental) {
       setEditingRental(rental);
       setRentalForm({
@@ -245,6 +280,7 @@ export function MenuManagement() {
 
   const handleSaveRental = async (e: React.FormEvent) => {
     e.preventDefault();
+    await runSave(async () => {
     if (editingRental) {
       await updateRentalItem(editingRental.id, {
         name: rentalForm.name,
@@ -262,7 +298,7 @@ export function MenuManagement() {
         is_available: rentalForm.is_available,
       });
     }
-    setRentalDialogOpen(false);
+    }, () => setRentalDialogOpen(false), editingRental ? 'Equipment updated' : 'Equipment added');
   };
 
   // Filtered menu items
@@ -308,7 +344,7 @@ export function MenuManagement() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-4 w-full max-w-xl">
+        <TabsList>
           <TabsTrigger value="items">Dishes & Food ({menuItems.length})</TabsTrigger>
           <TabsTrigger value="packages">Packages ({packages.length})</TabsTrigger>
           <TabsTrigger value="themes">Event Themes ({themes.length})</TabsTrigger>
@@ -320,17 +356,16 @@ export function MenuManagement() {
           <Card>
             <CardContent className="p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="relative flex-1 max-w-sm">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-text-muted" />
-                  <Input
-                    placeholder="Search dishes..."
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    className="pl-9 text-xs"
-                  />
-                </div>
-                <div className="w-48">
+                <SearchInput
+                  wrapperClassName="flex-1 sm:max-w-sm"
+                  placeholder="Search dishes..."
+                  value={searchQuery}
+                  onValueChange={setSearchQuery}
+                  className="text-xs"
+                />
+                <div className="w-full sm:w-48">
                   <Select
+                    aria-label="Filter by category"
                     value={selectedCategory}
                     onChange={e => setSelectedCategory(e.target.value)}
                     className="text-xs"
@@ -361,6 +396,30 @@ export function MenuManagement() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
+                    {filteredMenuItems.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-12 text-center text-sm text-text-muted">
+                          <p>
+                            {menuItems.length === 0
+                              ? 'No dishes yet. Use “Add Food Item” to create your first one.'
+                              : 'No dishes match your search or category.'}
+                          </p>
+                          {(searchQuery || selectedCategory !== 'all') && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSearchQuery('');
+                                setSelectedCategory('all');
+                              }}
+                              className="mt-3 text-xs"
+                            >
+                              Clear filters
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    )}
                     {menuItemsPagination.paginatedItems.map(item => {
                       const cat = categories.find(c => c.id === item.category_id);
                       return (
@@ -383,7 +442,7 @@ export function MenuManagement() {
                               </div>
                               <div className="min-w-0">
                                 <div className="font-semibold text-ink">{item.name}</div>
-                                <div className="text-xs text-text-muted line-clamp-1">
+                                <div className="max-w-xs truncate text-xs text-text-muted">
                                   {item.description || '—'}
                                 </div>
                               </div>
@@ -399,10 +458,17 @@ export function MenuManagement() {
                           </td>
                           <td className="px-6 py-3.5">
                             <button
+                              type="button"
                               onClick={() =>
-                                updateMenuItem(item.id, { is_available: !item.is_available })
+                                runQuickAction(
+                                  () => updateMenuItem(item.id, { is_available: !item.is_available }),
+                                  `${item.name} marked ${item.is_available ? 'sold out' : 'available'}`,
+                                  'Tap the status again to undo.'
+                                )
                               }
-                              className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+                              className="flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold cursor-pointer"
+                              title="Click to toggle availability"
+                              aria-label={`${item.name} is ${item.is_available ? 'available' : 'sold out'}. Toggle availability`}
                             >
                               {item.is_available ? (
                                 <span className="text-emerald-700 flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
@@ -418,14 +484,20 @@ export function MenuManagement() {
                           <td className="px-6 py-3.5 text-right">
                             <div className="flex items-center justify-end gap-1">
                               <button
+                                type="button"
                                 onClick={() => handleOpenItemDialog(item)}
-                                className="rounded p-1.5 text-text-muted hover:bg-cream-dark hover:text-gold transition-colors"
+                                className="rounded p-2 text-text-muted hover:bg-cream-dark hover:text-gold transition-colors"
+                                title="Edit dish"
+                                aria-label={`Edit ${item.name}`}
                               >
                                 <Edit className="h-4 w-4" />
                               </button>
                               <button
+                                type="button"
                                 onClick={() => setItemToDelete(item.id)}
-                                className="rounded p-1.5 text-text-muted hover:bg-red-50 hover:text-red-600 transition-colors"
+                                className="rounded p-2 text-text-muted hover:bg-red-50 hover:text-red-600 transition-colors"
+                                title="Delete dish"
+                                aria-label={`Delete ${item.name}`}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>
@@ -526,8 +598,14 @@ export function MenuManagement() {
                   </p>
                   <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
                     <button
-                      onClick={() => updateTheme(theme.id, { is_active: !theme.is_active })}
-                      className="text-xs font-medium text-text-muted hover:text-ink underline"
+                      type="button"
+                      onClick={() =>
+                        runQuickAction(
+                          () => updateTheme(theme.id, { is_active: !theme.is_active }),
+                          `${theme.name} ${theme.is_active ? 'hidden from' : 'shown to'} customers`
+                        )
+                      }
+                      className="py-1 text-xs font-medium text-text-muted hover:text-ink underline"
                     >
                       {theme.is_active ? 'Deactivate' : 'Activate'}
                     </button>
@@ -682,7 +760,7 @@ export function MenuManagement() {
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-xs font-semibold uppercase text-text-muted mb-1">
                 Category
@@ -736,12 +814,17 @@ export function MenuManagement() {
             </label>
           </div>
 
-          <div className="flex justify-end gap-2 pt-4 border-t border-border">
+          {formError && (
+            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {formError}
+            </div>
+          )}
+          <div className="flex flex-col-reverse gap-2 pt-4 border-t border-border sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" onClick={() => setItemDialogOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="gold">
-              Save Item
+            <Button type="submit" variant="gold" disabled={saving}>
+              {saving ? 'Saving…' : 'Save Item'}
             </Button>
           </div>
         </form>
@@ -767,7 +850,7 @@ export function MenuManagement() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-xs font-semibold uppercase text-text-muted mb-1">
                 Rate / Pax (PHP)
@@ -826,12 +909,17 @@ export function MenuManagement() {
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-4 border-t border-border">
+          {formError && (
+            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {formError}
+            </div>
+          )}
+          <div className="flex flex-col-reverse gap-2 pt-4 border-t border-border sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" onClick={() => setPackageDialogOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="gold">
-              Save Package
+            <Button type="submit" variant="gold" disabled={saving}>
+              {saving ? 'Saving…' : 'Save Package'}
             </Button>
           </div>
         </form>
@@ -857,7 +945,7 @@ export function MenuManagement() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-xs font-semibold uppercase text-text-muted mb-1">
                 Category
@@ -893,12 +981,17 @@ export function MenuManagement() {
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-4 border-t border-border">
+          {formError && (
+            <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {formError}
+            </div>
+          )}
+          <div className="flex flex-col-reverse gap-2 pt-4 border-t border-border sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" onClick={() => setRentalDialogOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="gold">
-              Save Equipment
+            <Button type="submit" variant="gold" disabled={saving}>
+              {saving ? 'Saving…' : 'Save Equipment'}
             </Button>
           </div>
         </form>
@@ -910,13 +1003,13 @@ export function MenuManagement() {
         onOpenChange={(open) => !open && setItemToDelete(null)}
         onConfirm={() => {
           if (itemToDelete !== null) {
-            deleteMenuItem(itemToDelete);
+            runQuickAction(() => deleteMenuItem(itemToDelete), 'Dish deleted');
             setItemToDelete(null);
           }
         }}
         variant="danger"
         title="Delete Dish / Food Item"
-        description="Are you sure you want to remove this dish? It will no longer be available for catering packages."
+        description="This permanently removes the dish. It will no longer be available for catering packages. To hide it temporarily instead, mark it as Sold Out."
         confirmLabel="Delete Item"
       />
 
@@ -925,7 +1018,7 @@ export function MenuManagement() {
         onOpenChange={(open) => !open && setPackageToDelete(null)}
         onConfirm={() => {
           if (packageToDelete !== null) {
-            deletePackage(packageToDelete);
+            runQuickAction(() => deletePackage(packageToDelete), 'Package deleted');
             setPackageToDelete(null);
           }
         }}

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Search, Users, Calendar, Phone, Mail, Eye } from 'lucide-react';
+import { Calendar, Eye } from 'lucide-react';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -80,15 +81,13 @@ export function Customers() {
       {/* Search Input */}
       <Card>
         <CardContent className="p-4">
-          <div className="relative max-w-md">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-text-muted" />
-            <Input
-              placeholder="Search by name, phone, or account ID..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="pl-9 text-xs"
-            />
-          </div>
+          <SearchInput
+            wrapperClassName="max-w-md"
+            placeholder="Search by name, phone, or account ID..."
+            value={searchQuery}
+            onValueChange={setSearchQuery}
+            className="text-xs"
+          />
         </CardContent>
       </Card>
 
@@ -111,7 +110,14 @@ export function Customers() {
                 {filteredCustomers.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center text-sm text-text-muted">
-                      No customers match the search criteria.
+                      <p>
+                        {searchQuery ? 'No customers match your search.' : 'No customers have registered yet.'}
+                      </p>
+                      {searchQuery && (
+                        <Button variant="outline" size="sm" onClick={() => setSearchQuery('')} className="mt-3 text-xs">
+                          Clear search
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -151,6 +157,7 @@ export function Customers() {
                             size="sm"
                             onClick={() => handleOpenHistory(cust)}
                             className="gap-1 text-xs"
+                            aria-label={`View bookings for ${cust.name}`}
                           >
                             <Eye className="h-3.5 w-3.5" /> Bookings
                           </Button>
@@ -197,7 +204,7 @@ export function Customers() {
                     className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-border bg-cream/40 p-3.5 text-xs hover:bg-cream transition-colors"
                   >
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono font-bold text-ink">{res.booking_code}</span>
                         <Badge variant={res.status}>{res.status.replace('_', ' ')}</Badge>
                       </div>
@@ -208,7 +215,7 @@ export function Customers() {
                         Guests: {res.guest_count} pax
                       </p>
                     </div>
-                    <div className="text-right sm:self-center">
+                    <div className="sm:text-right sm:self-center">
                       <div className="font-bold text-ink text-sm">
                         {formatCurrency(res.total_amount)}
                       </div>

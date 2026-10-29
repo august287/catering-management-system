@@ -51,7 +51,7 @@ export function Pagination({
   return (
     <div
       className={cn(
-        'flex flex-col gap-3 border-t border-border px-6 py-3 sm:flex-row sm:items-center sm:justify-between',
+        'flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6',
         className
       )}
     >
@@ -81,12 +81,12 @@ export function Pagination({
         )}
       </div>
 
-      <div className="flex items-center gap-1">
+      <nav aria-label="Pagination" className="flex flex-wrap items-center gap-1">
         <button
           type="button"
           onClick={() => onPageChange(page - 1)}
           disabled={page <= 1}
-          className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-text-muted transition-colors hover:bg-cream hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-md border border-border text-text-muted transition-colors hover:bg-cream hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
           aria-label="Previous page"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -106,12 +106,13 @@ export function Pagination({
               key={p}
               onClick={() => onPageChange(p)}
               className={cn(
-                'flex h-8 min-w-8 items-center justify-center rounded-md border px-2 text-xs font-semibold transition-colors',
+                'flex h-9 min-w-9 sm:h-8 sm:min-w-8 items-center justify-center rounded-md border px-2 text-xs font-semibold transition-colors',
                 p === page
                   ? 'border-gold bg-gold text-white'
                   : 'border-border text-text-muted hover:bg-cream hover:text-ink'
               )}
               aria-current={p === page ? 'page' : undefined}
+              aria-label={`Page ${p}`}
             >
               {p}
             </button>
@@ -122,12 +123,12 @@ export function Pagination({
           type="button"
           onClick={() => onPageChange(page + 1)}
           disabled={page >= totalPages}
-          className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-text-muted transition-colors hover:bg-cream hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-9 w-9 sm:h-8 sm:w-8 items-center justify-center rounded-md border border-border text-text-muted transition-colors hover:bg-cream hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
           aria-label="Next page"
         >
           <ChevronRight className="h-4 w-4" />
         </button>
-      </div>
+      </nav>
     </div>
   );
 }

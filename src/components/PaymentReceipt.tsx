@@ -90,7 +90,7 @@ function ReceiptDocument({
 
   return (
     <div className="mx-auto w-full max-w-[760px] bg-white text-ink">
-      <div className="flex items-start justify-between gap-6 border-b-2 border-gold pb-4">
+      <div className="flex flex-col gap-4 border-b-2 border-gold pb-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
         <div className="flex items-center gap-3">
           <img
             src="/images/natalielogo.jpg"
@@ -109,7 +109,7 @@ function ReceiptDocument({
           </div>
         </div>
 
-        <div className="text-right">
+        <div className="sm:text-right">
           <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
             {isVerified ? 'Official Receipt No.' : 'Acknowledgement No.'}
           </p>
@@ -247,7 +247,7 @@ function ReceiptDocument({
         {status.note}
       </p>
 
-      <div className="mt-10 grid grid-cols-2 gap-16">
+      <div className="mt-10 grid grid-cols-2 gap-6 sm:gap-16">
         <div className="text-center">
           <div className="h-10" />
           <div className="border-t border-ink pt-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
@@ -315,7 +315,7 @@ export function PaymentReceiptDialog({
         description="Preview the receipt, then print it or save it as a PDF."
         className="max-w-3xl"
       >
-        <div className="mb-4 flex items-center justify-end gap-2 no-print">
+        <div className="mb-4 flex flex-col-reverse gap-2 no-print sm:flex-row sm:items-center sm:justify-end">
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             Close
           </Button>
@@ -324,7 +324,7 @@ export function PaymentReceiptDialog({
           </Button>
         </div>
 
-        <div className="rounded-lg border border-border bg-white p-5">
+        <div className="rounded-lg border border-border bg-white p-3 sm:p-5">
           <ReceiptDocument
             payment={payment}
             reservation={reservation}

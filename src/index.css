@@ -27,6 +27,56 @@
   h1, h2, h3, h4, h5, h6, .font-serif {
     font-family: 'Playfair Display', Georgia, serif;
   }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* Visible keyboard focus everywhere, not just on components that opt in */
+  a:focus-visible,
+  button:focus-visible,
+  [role='button']:focus-visible,
+  summary:focus-visible {
+    outline: 2px solid #a9822f;
+    outline-offset: 2px;
+  }
+
+  /* Data tables scroll sideways on small screens, so keep codes, phone numbers
+     and amounts on one line instead of breaking them mid-value. */
+  thead th,
+  .overflow-x-auto > table td {
+    white-space: nowrap;
+  }
+
+  /* iOS Safari zooms the page when a focused field is under 16px.
+     Keep form text at 16px on phones so layouts don't jump. */
+  @media (max-width: 639px) {
+    input:not([type='checkbox']):not([type='radio']):not([type='file']),
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* Custom scrollbar styling */

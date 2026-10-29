@@ -308,14 +308,14 @@ export function Payments() {
           </CardHeader>
           <CardContent>
             {successMessage && (
-              <div className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+              <div role="status" className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
                 <span>{successMessage}</span>
               </div>
             )}
 
             {errorMessage && (
-              <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+              <div role="alert" className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
                 <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
                 <span>{errorMessage}</span>
               </div>

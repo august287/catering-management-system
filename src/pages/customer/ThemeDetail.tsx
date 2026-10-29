@@ -79,7 +79,7 @@ export function ThemeDetail() {
           <img
             src={theme.image_url || '/images/2 PIC.jpg'}
             alt={theme.name}
-            className="h-[380px] w-full object-cover"
+            className="h-56 w-full object-cover sm:h-80 lg:h-[380px]"
           />
         </div>
       </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Check,
@@ -13,6 +13,7 @@ import {
   Minus,
   Sparkles,
   ShieldCheck,
+  AlertCircle,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -29,7 +30,16 @@ import {
   isValidGuestCount,
   MIN_GUEST_COUNT,
   MAX_GUEST_COUNT,
+  formatDate,
+  formatTime,
 } from '@/lib/utils';
+
+const STEPS = [
+  { num: 1, label: 'Theme & Package' },
+  { num: 2, label: 'Rentals & Add-ons' },
+  { num: 3, label: 'Event Details' },
+  { num: 4, label: 'Review & Submit' },
+];
 
 export function BookReservation() {
   const [searchParams] = useSearchParams();
@@ -61,6 +71,18 @@ export function BookReservation() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
+  const errorRef = useRef<HTMLDivElement>(null);
+
+  // Errors render above the form; on phones the user is usually at the bottom
+  // pressing "Next", so bring the message into view.
+  useEffect(() => {
+    if (errorMessage) errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [errorMessage]);
+
+  const goToStep = (n: number) => {
+    setErrorMessage('');
+    setStep(n);
+  };
 
   const selectedTheme = themes.find(t => t.id === themeId);
   const selectedPackage = packages.find(p => p.id === packageId);
@@ -198,40 +220,53 @@ export function BookReservation() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Wizard Step Progress */}
-      <div className="rounded-xl border border-border bg-white p-4 shadow-card">
-        <div className="grid grid-cols-4 gap-2 text-center text-xs">
-          {[
-            { num: 1, label: 'Theme & Package' },
-            { num: 2, label: 'Rentals & Add-ons' },
-            { num: 3, label: 'Event Details' },
-            { num: 4, label: 'Review & Submit' },
-          ].map(s => (
-            <div
-              key={s.num}
-              className={`flex flex-col items-center py-1 transition-colors ${
-                step >= s.num ? 'text-ink font-bold' : 'text-text-muted font-medium'
-              }`}
-            >
-              <div
-                className={`flex h-7 w-7 items-center justify-center rounded-full text-xs mb-1.5 transition-all ${
-                  step === s.num
-                    ? 'bg-gold text-white font-bold ring-2 ring-gold/40'
-                    : step > s.num
-                    ? 'bg-ink text-cream'
-                    : 'bg-cream-dark text-text-muted'
-                }`}
-              >
-                {step > s.num ? <Check className="h-3.5 w-3.5" /> : s.num}
-              </div>
-              <span className="truncate max-w-[120px]">{s.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      <nav aria-label="Booking progress" className="rounded-xl border border-border bg-white p-4 shadow-card">
+        <p className="mb-3 text-center text-xs font-semibold text-text-muted sm:hidden">
+          Step {step} of {STEPS.length}: <span className="text-ink">{STEPS[step - 1].label}</span>
+        </p>
+        <ol className="grid grid-cols-4 gap-2 text-center text-xs">
+          {STEPS.map(s => {
+            const isDone = step > s.num;
+            const isCurrent = step === s.num;
+            return (
+              <li key={s.num}>
+                <button
+                  type="button"
+                  onClick={() => isDone && goToStep(s.num)}
+                  disabled={!isDone}
+                  aria-current={isCurrent ? 'step' : undefined}
+                  aria-label={`Step ${s.num}: ${s.label}${isDone ? ' (completed, go back)' : isCurrent ? ' (current)' : ''}`}
+                  className={`flex w-full flex-col items-center rounded-lg py-1 transition-colors disabled:cursor-default ${
+                    step >= s.num ? 'text-ink font-bold' : 'text-text-muted font-medium'
+                  } ${isDone ? 'hover:bg-cream' : ''}`}
+                >
+                  <span
+                    className={`flex h-7 w-7 items-center justify-center rounded-full text-xs transition-all sm:mb-1.5 ${
+                      isCurrent
+                        ? 'bg-gold text-white font-bold ring-2 ring-gold/40'
+                        : isDone
+                        ? 'bg-ink text-cream'
+                        : 'bg-cream-dark text-text-muted'
+                    }`}
+                  >
+                    {isDone ? <Check className="h-3.5 w-3.5" /> : s.num}
+                  </span>
+                  <span className="hidden sm:block">{s.label}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
 
       {errorMessage && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 font-medium">
-          {errorMessage}
+        <div
+          ref={errorRef}
+          role="alert"
+          className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 font-medium scroll-mt-4"
+        >
+          <AlertCircle className="mt-px h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>{errorMessage}</span>
         </div>
       )}
 
@@ -246,15 +281,17 @@ export function BookReservation() {
             <CardContent className="space-y-6">
               {/* Theme Grid */}
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-3">
+                <p id="theme-label" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-3">
                   Select Event Theme
-                </label>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                </p>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3" role="group" aria-labelledby="theme-label">
                   {themes.map(t => (
-                    <div
+                    <button
+                      type="button"
                       key={t.id}
                       onClick={() => setThemeId(t.id)}
-                      className={`cursor-pointer rounded-lg border p-3 transition-all ${
+                      aria-pressed={themeId === t.id}
+                      className={`cursor-pointer rounded-lg border p-3 text-left transition-all ${
                         themeId === t.id
                           ? 'border-gold bg-gold-light/40 shadow-sm ring-1 ring-gold'
                           : 'border-border bg-white hover:border-text-muted'
@@ -262,29 +299,31 @@ export function BookReservation() {
                     >
                       <h4 className="font-serif text-sm font-bold text-ink">{t.name}</h4>
                       <p className="mt-1 text-[11px] text-text-muted line-clamp-1">{t.tagline}</p>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
 
               {/* Package Selection Cards */}
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-3">
+                <p id="package-label" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-3">
                   Select Catering Package Tier
-                </label>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                </p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2" role="group" aria-labelledby="package-label">
                   {packages.map(pkg => (
-                    <div
+                    <button
+                      type="button"
                       key={pkg.id}
                       onClick={() => setPackageId(pkg.id)}
-                      className={`cursor-pointer rounded-xl border p-5 transition-all flex flex-col justify-between ${
+                      aria-pressed={packageId === pkg.id}
+                      className={`cursor-pointer rounded-xl border p-4 text-left transition-all flex flex-col justify-between sm:p-5 ${
                         packageId === pkg.id
                           ? 'border-gold bg-gold-light/30 shadow-md ring-2 ring-gold'
                           : 'border-border bg-white hover:border-gold/60'
                       }`}
                     >
                       <div>
-                        <div className="flex items-start justify-between">
+                        <div className="flex items-start justify-between gap-2">
                           <h4 className="font-serif text-base font-bold text-ink">{pkg.name}</h4>
                           <Badge variant="gold">
                             {`${Math.min(MAX_GUEST_COUNT, Math.max(MIN_GUEST_COUNT, pkg.min_pax))}–${MAX_GUEST_COUNT} pax`}
@@ -304,10 +343,10 @@ export function BookReservation() {
                             packageId === pkg.id ? 'text-gold-dark' : 'text-text-muted'
                           }`}
                         >
-                          {packageId === pkg.id ? '✓ Selected Package' : 'Click to select'}
+                          {packageId === pkg.id ? '✓ Selected Package' : 'Tap to select'}
                         </span>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -332,31 +371,36 @@ export function BookReservation() {
                 return (
                   <div
                     key={rental.id}
-                    className="flex items-center justify-between rounded-lg border border-border bg-white p-4 shadow-xs"
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border bg-white p-4 shadow-xs"
                   >
-                    <div>
+                    <div className="min-w-0">
                       <h4 className="font-serif font-bold text-ink text-sm">{rental.name}</h4>
                       <p className="text-xs text-text-muted">
                         {formatCurrency(rental.rate_per_unit)} / piece
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-1.5">
                       <button
                         type="button"
                         onClick={() => updateRentalQty(rental.id, -1)}
                         disabled={qty === 0}
-                        className="flex h-7 w-7 items-center justify-center rounded border border-border bg-cream hover:bg-cream-dark disabled:opacity-30"
+                        aria-label={`Remove one ${rental.name}`}
+                        className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-cream hover:bg-cream-dark disabled:opacity-30 sm:h-8 sm:w-8"
                       >
-                        <Minus className="h-3 w-3" />
+                        <Minus className="h-3.5 w-3.5" />
                       </button>
-                      <span className="w-8 text-center text-xs font-bold text-ink">{qty}</span>
+                      <span className="w-8 text-center text-sm font-bold text-ink" aria-live="polite" aria-label={`${qty} selected`}>
+                        {qty}
+                      </span>
                       <button
                         type="button"
                         onClick={() => updateRentalQty(rental.id, 1)}
-                        className="flex h-7 w-7 items-center justify-center rounded border border-border bg-cream hover:bg-cream-dark"
+                        disabled={qty >= rental.stock_quantity}
+                        aria-label={`Add one ${rental.name}`}
+                        className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-cream hover:bg-cream-dark disabled:opacity-30 sm:h-8 sm:w-8"
                       >
-                        <Plus className="h-3 w-3" />
+                        <Plus className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </div>
@@ -385,10 +429,10 @@ export function BookReservation() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
+                <label htmlFor="event-date" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
                   Event Date
                 </label>
-                <Input
+                <Input id="event-date"
                   type="date"
                   required
                   min={minEventDate}
@@ -401,10 +445,10 @@ export function BookReservation() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
+                <label htmlFor="event-time" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
                   Call Time / Serving Time
                 </label>
-                <Input
+                <Input id="event-time"
                   type="time"
                   required
                   value={eventTime}
@@ -413,10 +457,10 @@ export function BookReservation() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
+                <label htmlFor="guest-count" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
                   Guest Count (Pax)
                 </label>
-                <Input
+                <Input id="guest-count"
                   type="number"
                   required
                   min={minGuestCount}
@@ -433,10 +477,10 @@ export function BookReservation() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
+              <label htmlFor="venue-address" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
                 Exact Venue Address
               </label>
-              <Input
+              <Input id="venue-address"
                 required
                 placeholder="e.g. Fernwood Gardens, QC / Clubhouse / Residence..."
                 value={venueAddress}
@@ -445,10 +489,10 @@ export function BookReservation() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
+              <label htmlFor="special-requests" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
                 Special Requests / Dietary Notes (Optional)
               </label>
-              <Textarea
+              <Textarea id="special-requests"
                 rows={3}
                 placeholder="Allergies, preferred backdrop color palette, timeline notes..."
                 value={specialRequests}
@@ -474,7 +518,7 @@ export function BookReservation() {
                 <span className="font-bold uppercase text-text-muted block">Event Information</span>
                 <p className="font-semibold text-ink text-sm">{selectedTheme?.name}</p>
                 <p className="text-text">
-                  Date: <span className="font-semibold">{eventDate}</span> at {eventTime}
+                  Date: <span className="font-semibold">{formatDate(eventDate)}</span> at {formatTime(eventTime)}
                 </p>
                 <p className="text-text">
                   Venue: <span className="font-semibold">{venueAddress}</span>
@@ -507,24 +551,24 @@ export function BookReservation() {
             </div>
 
             {/* Financial Contract Box */}
-            <div className="rounded-xl bg-ink p-6 text-white space-y-3">
-              <div className="flex items-center justify-between text-sm text-cream/70">
+            <div className="rounded-xl bg-ink p-4 text-white space-y-3 sm:p-6">
+              <div className="flex items-center justify-between gap-4 text-sm text-cream/70">
                 <span>Catering Package Subtotal ({guestCount} pax):</span>
                 <span>{formatCurrency(packageTotal)}</span>
               </div>
               {rentalsTotal > 0 && (
-                <div className="flex items-center justify-between text-sm text-cream/70">
+                <div className="flex items-center justify-between gap-4 text-sm text-cream/70">
                   <span>Equipment Rentals Subtotal:</span>
                   <span>{formatCurrency(rentalsTotal)}</span>
                 </div>
               )}
-              <div className="border-t border-ink-muted/60 pt-3 flex items-center justify-between text-base font-bold">
+              <div className="border-t border-ink-muted/60 pt-3 flex flex-wrap items-center justify-between gap-x-4 text-base font-bold">
                 <span>Total Contract Amount:</span>
                 <span className="font-serif text-2xl text-white">
                   {formatCurrency(grandTotal)}
                 </span>
               </div>
-              <div className="border-t border-ink-muted/60 pt-3 flex items-center justify-between text-sm font-semibold text-gold-light">
+              <div className="border-t border-ink-muted/60 pt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm font-semibold text-gold-light">
                 <div className="flex items-center gap-1.5">
                   <ShieldCheck className="h-4 w-4 text-gold" />
                   <span>Required 50% Downpayment to Confirm:</span>
@@ -539,22 +583,22 @@ export function BookReservation() {
       )}
 
       {/* Navigation Buttons */}
-      <div className="flex items-center justify-between pt-2">
+      <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
         {step > 1 ? (
           <Button
             type="button"
             variant="outline"
-            onClick={() => setStep(step - 1)}
+            onClick={() => goToStep(step - 1)}
             className="gap-1.5 text-xs"
           >
             <ChevronLeft className="h-4 w-4" /> Previous Step
           </Button>
         ) : (
-          <div />
+          <div className="hidden sm:block" />
         )}
 
         {step < 4 ? (
-          <Button type="button" variant="gold" onClick={handleNext} className="gap-1.5 text-xs">
+          <Button type="button" variant="gold" onClick={handleNext} className="h-11 gap-1.5 text-sm sm:h-10 sm:text-xs">
             Next Step <ChevronRight className="h-4 w-4" />
           </Button>
         ) : (

@@ -98,7 +98,7 @@ export function MyReservations() {
                 }`}
               >
                 <div className="p-5 space-y-3">
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between gap-3">
                     <div>
                       <span className="font-mono text-xs font-bold text-ink">
                         {res.booking_code}
@@ -131,7 +131,7 @@ export function MyReservations() {
 
                   {/* Financial Status */}
                   <div className="rounded-lg bg-cream-dark/50 p-3 text-xs space-y-1">
-                    <div className="flex justify-between">
+                    <div className="flex justify-between gap-4">
                       <span className="text-text-muted">Total Contract:</span>
                       <span className="font-bold text-ink">{formatCurrency(res.total_amount)}</span>
                     </div>
@@ -192,22 +192,22 @@ export function MyReservations() {
           >
             <div className="space-y-4 text-xs">
               <div className="rounded-lg border border-border p-3 space-y-2 bg-cream/40">
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center gap-4">
                   <span className="font-semibold text-text-muted">Status:</span>
                   <Badge variant={selectedRes.status}>{selectedRes.status.replace('_', ' ')}</Badge>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between gap-4">
                   <span className="font-semibold text-text-muted">Event Schedule:</span>
                   <span className="font-bold text-ink">
                     {formatDate(selectedRes.event_date)} at {formatTime(selectedRes.event_time)}
                   </span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between gap-4">
                   <span className="font-semibold text-text-muted">Guest Count:</span>
                   <span className="font-bold text-ink">{selectedRes.guest_count} persons</span>
                 </div>
                 {selTheme && (
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-4">
                     <span className="font-semibold text-text-muted">Styling Motif:</span>
                     <span className="font-bold text-gold-dark">{selTheme.name}</span>
                   </div>
@@ -272,7 +272,7 @@ export function MyReservations() {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
                 {remBalance > 0 && selectedRes.status !== 'cancelled' && selectedRes.status !== 'completed' && (
                   <Link to={`/customer/payments?reservationId=${selectedRes.id}`}>
                     <Button variant="gold" size="sm" className="text-xs">

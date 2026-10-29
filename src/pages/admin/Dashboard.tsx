@@ -117,7 +117,7 @@ export function Dashboard() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Revenue Trend Area Chart */}
         <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 space-y-0 pb-2">
             <div>
               <CardTitle>Monthly Revenue Trend</CardTitle>
               <p className="text-xs text-text-muted mt-0.5">
@@ -147,7 +147,7 @@ export function Dashboard() {
 
       {/* Recent Reservations Table */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-4">
+        <CardHeader className="flex flex-col gap-3 space-y-0 pb-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle>Recent Booking Requests</CardTitle>
             <p className="text-xs text-text-muted mt-0.5">
@@ -175,6 +175,13 @@ export function Dashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
+                {recentReservations.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-12 text-center text-sm text-text-muted">
+                      No booking requests yet. New reservations will appear here.
+                    </td>
+                  </tr>
+                )}
                 {recentReservations.map(res => {
                   const cust = profiles.find(p => p.id === res.customer_id);
                   return (
@@ -199,10 +206,13 @@ export function Dashboard() {
                         <Badge variant={res.status}>{res.status.replace('_', ' ')}</Badge>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <Link to="/admin/reservations">
-                          <button className="rounded p-1.5 text-text-muted hover:bg-cream-dark hover:text-gold transition-colors">
-                            <Eye className="h-4 w-4" />
-                          </button>
+                        <Link
+                          to="/admin/reservations"
+                          className="inline-flex rounded p-2 text-text-muted hover:bg-cream-dark hover:text-gold transition-colors"
+                          aria-label={`Open reservations to view ${res.booking_code}`}
+                          title="View in Reservations"
+                        >
+                          <Eye className="h-4 w-4" />
                         </Link>
                       </td>
                     </tr>
