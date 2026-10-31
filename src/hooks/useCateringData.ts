@@ -9,6 +9,14 @@ import {
   MAX_GUEST_COUNT,
 } from '@/lib/utils';
 import {
+  DOUBLE_BOOKING_MESSAGE,
+  blocksDate,
+  buildAvailabilityMap,
+  isDateFullyBooked,
+  isDoubleBookingError,
+} from '@/lib/availability';
+import { fetchAvailability } from '@/hooks/useDateAvailability';
+import {
   EventTheme,
   MenuCategory,
   MenuItem,
@@ -378,6 +386,15 @@ export function useCateringData() {
       throw new Error(`Guest count must be between ${MIN_GUEST_COUNT} and ${MAX_GUEST_COUNT} pax.`);
     }
 
+    // Re-check right before saving: someone may have taken the date since the
+    // calendar last refreshed. The database trigger is the final guard.
+    const latest = await fetchAvailability(data.event_date, data.event_date).catch(() =>
+      buildAvailabilityMap(reservations)
+    );
+    if (isDateFullyBooked(latest, data.event_date)) {
+      throw new Error(DOUBLE_BOOKING_MESSAGE);
+    }
+
     const currentYear = new Date().getFullYear();
     const maxNum = reservations.reduce((max, r) => {
       const match = r.booking_code.match(/RES-\d{4}-(\d+)/);
@@ -464,6 +481,7 @@ export function useCateringData() {
           mockStore.saveNotifications(next);
           return next;
         });
+        if (isDoubleBookingError(insertErr?.message)) throw new Error(DOUBLE_BOOKING_MESSAGE);
         throw new Error(insertErr?.message || 'Failed to create reservation.');
       }
 
@@ -511,6 +529,16 @@ export function useCateringData() {
   const updateReservationStatus = async (id: number, status: ReservationStatus) => {
     const targetRes = reservations.find(r => r.id === id);
 
+    // Re-opening a cancelled/completed booking must not overbook its date.
+    if (targetRes && blocksDate(status) && !blocksDate(targetRes.status)) {
+      const taken = buildAvailabilityMap(reservations, id);
+      if (isDateFullyBooked(taken, targetRes.event_date)) {
+        throw new Error(
+          `Cannot set ${targetRes.booking_code} to "${status.replace('_', ' ')}": another booking already holds ${targetRes.event_date}.`
+        );
+      }
+    }
+
     // Save the change first and only notify the customer once it has stuck.
     // `.select()` matters: an update blocked by RLS returns no error, just 0 rows.
     if (isSupabaseConfigured()) {
@@ -520,6 +548,9 @@ export function useCateringData() {
         .eq('id', id)
         .select('id');
       if (updateError) {
+        if (isDoubleBookingError(updateError.message)) {
+          throw new Error('Cannot re-open this booking: its date is already taken by another reservation.');
+        }
         throw new Error(`Could not update the reservation: ${updateError.message}`);
       }
       if (!savedRows || savedRows.length === 0) {

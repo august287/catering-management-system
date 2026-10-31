@@ -18,6 +18,7 @@ import AdminCustomers from '@/pages/admin/Customers';
 import AdminPayments from '@/pages/admin/Payments';
 import AdminNotifications from '@/pages/admin/Notifications';
 import AdminReports from '@/pages/admin/Reports';
+import AdminEventCalendar from '@/pages/admin/EventCalendar';
 
 // Customer Pages
 import CustomerBrowseMenu from '@/pages/customer/BrowseMenu';
@@ -26,6 +27,7 @@ import CustomerBookReservation from '@/pages/customer/BookReservation';
 import CustomerMyReservations from '@/pages/customer/MyReservations';
 import CustomerPayments from '@/pages/customer/Payments';
 import CustomerNotifications from '@/pages/customer/Notifications';
+import CustomerAvailability from '@/pages/customer/Availability';
 import { useAuth } from '@/hooks/useAuth';
 
 function LandingOrRedirect() {
@@ -62,6 +64,7 @@ export function App() {
             <Route path="dashboard" element={<AdminDashboard />} />
             <Route path="menu" element={<AdminMenuManagement />} />
             <Route path="reservations" element={<AdminReservations />} />
+            <Route path="calendar" element={<AdminEventCalendar />} />
             <Route path="customers" element={<AdminCustomers />} />
             <Route path="payments" element={<AdminPayments />} />
             <Route path="notifications" element={<AdminNotifications />} />
@@ -80,6 +83,7 @@ export function App() {
             <Route index element={<Navigate to="/customer/menu" replace />} />
             <Route path="menu" element={<CustomerBrowseMenu />} />
             <Route path="menu/:themeId" element={<CustomerThemeDetail />} />
+            <Route path="availability" element={<CustomerAvailability />} />
             <Route path="book" element={<CustomerBookReservation />} />
             <Route path="reservations" element={<CustomerMyReservations />} />
             <Route path="payments" element={<CustomerPayments />} />

@@ -267,6 +267,47 @@ async function runTests() {
 
     console.log('✓ Supabase schema, migration SQL & code integrity verified');
 
+    // Reservation calendar availability & double-booking guard
+    console.log('Testing src/lib/availability.ts ...');
+    const avail = await loadTsModule('./src/lib/availability.ts');
+    const sample = [
+      { id: 1, event_date: '2026-11-20', status: 'confirmed' },
+      { id: 2, event_date: '2026-11-21', status: 'cancelled' },
+      { id: 3, event_date: '2026-11-22', status: 'completed' },
+      { id: 4, event_date: '2026-11-23', status: 'pending' },
+      { id: 5, event_date: '2026-11-23', status: 'in_progress' },
+    ];
+    const map = avail.buildAvailabilityMap(sample);
+    assert.deepStrictEqual(map, { '2026-11-20': 1, '2026-11-23': 2 }, 'cancelled/completed bookings must free their date');
+    assert.deepStrictEqual(avail.buildAvailabilityMap(sample, 1), { '2026-11-23': 2 }, 'excluded reservation must not count');
+    assert.ok(avail.isDateFullyBooked(map, '2026-11-20'), 'a date with an active booking is full at capacity 1');
+    assert.ok(!avail.isDateFullyBooked(map, '2026-11-21'), 'a date with only a cancelled booking is open');
+    assert.ok(!avail.isDateFullyBooked(map, '2026-11-20', 2), 'capacity 2 leaves a slot');
+    const today = '2026-11-01', minKey = '2026-11-08';
+    assert.strictEqual(avail.getDateStatus('2026-10-31', map, today, minKey), 'past');
+    assert.strictEqual(avail.getDateStatus('2026-11-05', map, today, minKey), 'too_soon');
+    assert.strictEqual(avail.getDateStatus('2026-11-20', map, today, minKey), 'booked');
+    assert.strictEqual(avail.getDateStatus('2026-11-21', map, today, minKey), 'available');
+    assert.strictEqual(avail.getDateStatus('2026-11-20', map, today, minKey, 2), 'limited');
+    assert.ok(avail.isDoubleBookingError('DATE_FULLY_BOOKED: 2026-11-20 is already fully booked.'));
+    assert.ok(!avail.isDoubleBookingError('some other error'));
+    const grid = avail.getMonthGrid(2026, 10); // November 2026
+    assert.strictEqual(grid.length % 7, 0, 'month grid must be whole weeks');
+    assert.strictEqual(grid[0].getDay(), 0, 'month grid must start on Sunday');
+    assert.ok(grid.some(d => avail.toDateKey(d) === '2026-11-30'), 'month grid must include the last day');
+    assert.strictEqual(avail.MAX_EVENTS_PER_DAY, 1, 'keep MAX_EVENTS_PER_DAY in sync with max_events_per_day() in migration 011');
+
+    const availSql = fs.readFileSync('./supabase/migrations/011_reservation_availability.sql', 'utf-8');
+    assert.ok(availSql.includes('select 1 $$'), 'migration 011 capacity must match MAX_EVENTS_PER_DAY');
+    assert.ok(availSql.includes('pg_advisory_xact_lock'), 'double-booking trigger must lock the date against concurrent inserts');
+    assert.ok(availSql.includes('security definer') && !/selects+r.*/i.test(availSql), 'availability RPC must expose counts only');
+    const ccd = fs.readFileSync('./src/hooks/useCateringData.ts', 'utf-8');
+    const createBody = ccd.slice(ccd.indexOf('const createReservation'), ccd.indexOf('const updateReservationStatus'));
+    assert.ok(createBody.indexOf('isDateFullyBooked') < createBody.indexOf("from('reservations')"), 'createReservation must check availability before inserting');
+    console.log('✓ src/lib/availability.ts & double-booking guard tests passed');
+
+
+
     console.log('\n========================================');
     console.log('ALL TESTS PASSED SUCCESSFULLY!');
     console.log('========================================');

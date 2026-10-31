@@ -10,6 +10,8 @@ import {
   BarChart3,
   BookOpen,
   CalendarPlus,
+  CalendarRange,
+  CalendarSearch,
   Clock,
   LogOut,
   Utensils,
@@ -64,6 +66,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       icon: CalendarDays,
       badge: pendingReservationsCount > 0 ? pendingReservationsCount : undefined,
     },
+    { to: '/admin/calendar', label: 'Event Calendar', icon: CalendarRange },
     { to: '/admin/customers', label: 'Customers', icon: Users },
     {
       to: '/admin/payments',
@@ -77,6 +80,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const customerNav: NavItem[] = [
     { to: '/customer/menu', label: 'Browse Menu', icon: BookOpen },
+    { to: '/customer/availability', label: 'Check Availability', icon: CalendarSearch },
     { to: '/customer/book', label: 'Book Reservation', icon: CalendarPlus },
     { to: '/customer/reservations', label: 'My Reservations', icon: Clock },
     { to: '/customer/payments', label: 'Payments', icon: CreditCard },

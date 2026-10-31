@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Check,
@@ -21,6 +21,9 @@ import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { Badge } from '@/components/ui/Badge';
 import { ConfirmationModal } from '@/components/ui/Modal';
+import { ReservationCalendar } from '@/components/ReservationCalendar';
+import { fetchAvailability } from '@/hooks/useDateAvailability';
+import { DOUBLE_BOOKING_MESSAGE, isDateFullyBooked } from '@/lib/availability';
 import { useAuth } from '@/hooks/useAuth';
 import { useCateringData } from '@/hooks/useCateringData';
 import {
@@ -63,7 +66,11 @@ export function BookReservation() {
   const minEventDate = getMinimumBookingDate();
 
   // Event details
-  const [eventDate, setEventDate] = useState<string>('');
+  // A date picked on the availability page arrives as ?date=YYYY-MM-DD.
+  const [eventDate, setEventDate] = useState<string>(() => {
+    const d = searchParams.get('date') || '';
+    return /^d{4}-d{2}-d{2}$/.test(d) && isAtLeastOneWeekAhead(d) ? d : '';
+  });
   const [eventTime, setEventTime] = useState<string>('16:00');
   const [venueAddress, setVenueAddress] = useState<string>('');
   const [specialRequests, setSpecialRequests] = useState<string>('');
@@ -78,6 +85,12 @@ export function BookReservation() {
   useEffect(() => {
     if (errorMessage) errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [errorMessage]);
+
+  // The picked date was booked by someone else while this page was open.
+  const handleDateTaken = useCallback((key: string) => {
+    setEventDate(prev => (prev === key ? '' : prev));
+    setErrorMessage(DOUBLE_BOOKING_MESSAGE);
+  }, []);
 
   const goToStep = (n: number) => {
     setErrorMessage('');
@@ -116,7 +129,7 @@ export function BookReservation() {
     });
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     setErrorMessage('');
     if (step === 1) {
       if (!packageId) {
@@ -140,6 +153,16 @@ export function BookReservation() {
       if (!venueAddress.trim()) {
         setErrorMessage('Please specify the event venue address.');
         return;
+      }
+      try {
+        const latest = await fetchAvailability(eventDate, eventDate);
+        if (isDateFullyBooked(latest, eventDate)) {
+          setEventDate('');
+          setErrorMessage(DOUBLE_BOOKING_MESSAGE);
+          return;
+        }
+      } catch {
+        // Offline check failed; the save step re-checks and the database blocks overlaps.
       }
       if (!isValidGuestCount(guestCount)) {
         setErrorMessage(
@@ -211,7 +234,12 @@ export function BookReservation() {
         state: { newBookingCode: res.booking_code },
       });
     } catch (err: any) {
-      setErrorMessage(err.message || 'Booking submission failed. Please try again.');
+      const message = err.message || 'Booking submission failed. Please try again.';
+      if (message === DOUBLE_BOOKING_MESSAGE) {
+        setEventDate('');
+        setStep(3);
+      }
+      setErrorMessage(message);
     } finally {
       setSubmitting(false);
     }
@@ -427,22 +455,32 @@ export function BookReservation() {
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div>
-                <label htmlFor="event-date" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
+            <div>
+              <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-2">
+                <span id="event-date-label" className="block text-xs font-bold uppercase tracking-wider text-text-muted">
                   Event Date
-                </label>
-                <Input id="event-date"
-                  type="date"
-                  required
-                  min={minEventDate}
-                  value={eventDate}
-                  onChange={e => setEventDate(e.target.value)}
-                />
-                <span className="mt-1 block text-[11px] text-text-muted">
-                  Must be at least 1 week (7 days) from today.
+                </span>
+                <span className="text-xs font-semibold text-ink" aria-live="polite">
+                  {eventDate ? `Selected: ${formatDate(eventDate)}` : 'No date selected'}
                 </span>
               </div>
+              <ReservationCalendar
+                mode="select"
+                value={eventDate}
+                onSelect={key => {
+                  setEventDate(key);
+                  setErrorMessage('');
+                }}
+                onSelectedDateTaken={handleDateTaken}
+                minBookableKey={minEventDate}
+                initialMonthKey={eventDate || minEventDate}
+              />
+              <span className="mt-1.5 block text-[11px] text-text-muted">
+                Availability updates live. Dates must be at least 1 week (7 days) from today, and we cater one event per day.
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 
               <div>
                 <label htmlFor="event-time" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
