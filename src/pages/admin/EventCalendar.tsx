@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarCheck, CalendarX, Clock, MapPin, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { ReservationCalendar } from '@/components/ReservationCalendar';
-import { useCateringData } from '@/hooks/useCateringData';
+import { AUTO_CANCELLED_EVENT, useCateringData } from '@/hooks/useCateringData';
 import { blocksDate, buildAvailabilityMap, MAX_EVENTS_PER_DAY, toDateKey } from '@/lib/availability';
 import { formatCurrency, formatDate, formatTime, getMinimumBookingDate } from '@/lib/utils';
 
@@ -20,6 +20,16 @@ export function EventCalendar() {
   const { reservations, profiles } = useCateringData();
   const todayKey = toDateKey(new Date());
   const [selectedKey, setSelectedKey] = useState<string>(todayKey);
+  const [autoCancelled, setAutoCancelled] = useState<string[]>([]);
+
+  useEffect(() => {
+    const onAutoCancelled = (e: Event) => {
+      const codes = (e as CustomEvent<string[]>).detail || [];
+      setAutoCancelled(prev => Array.from(new Set([...prev, ...codes])));
+    };
+    window.addEventListener(AUTO_CANCELLED_EVENT, onAutoCancelled);
+    return () => window.removeEventListener(AUTO_CANCELLED_EVENT, onAutoCancelled);
+  }, []);
 
   const withCustomers = useMemo(
     () =>
@@ -58,10 +68,26 @@ export function EventCalendar() {
         </p>
       </div>
 
+      {autoCancelled.length > 0 && (
+        <div role="status" className="flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          <span>
+            <strong>Double booking auto-cancelled:</strong> {autoCancelled.join(', ')}. The earliest booking on each
+            date was kept and the affected customers were notified.
+          </span>
+          <button
+            type="button"
+            onClick={() => setAutoCancelled([])}
+            className="shrink-0 font-semibold underline hover:no-underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {conflicts.length > 0 && (
         <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
-          <strong>Double booking detected</strong> on {conflicts.map(formatDate).join(', ')}. Cancel or
-          reschedule one of the events on {conflicts.length > 1 ? 'these dates' : 'this date'}.
+          <strong>Double booking detected</strong> on {conflicts.map(formatDate).join(', ')}. Auto-cancelling the
+          later booking{conflicts.length > 1 ? 's' : ''}…
         </div>
       )}
 

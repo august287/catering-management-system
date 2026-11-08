@@ -1,6 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Printer } from 'lucide-react';
+import { Mail, Printer } from 'lucide-react';
+import { useToast } from '@/components/ui/Toast';
+import { emailReceipt } from '@/lib/receiptEmail';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { Dialog } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
@@ -304,6 +307,22 @@ export function PaymentReceiptDialog({
     };
   }, [open, payment, customerName]);
 
+  const { toast } = useToast();
+  const [emailing, setEmailing] = useState(false);
+
+  const handleEmail = async () => {
+    if (!payment) return;
+    setEmailing(true);
+    try {
+      const to = await emailReceipt(payment.id);
+      toast({ title: 'Receipt emailed', description: `Sent to ${to}.` });
+    } catch (err: any) {
+      toast({ tone: 'error', title: 'Receipt email not sent', description: err?.message });
+    } finally {
+      setEmailing(false);
+    }
+  };
+
   if (!payment) return null;
 
   return (
@@ -319,6 +338,11 @@ export function PaymentReceiptDialog({
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             Close
           </Button>
+          {isSupabaseConfigured() && (
+            <Button variant="outline" size="sm" onClick={handleEmail} disabled={emailing} className="gap-1.5">
+              <Mail className="h-4 w-4" /> {emailing ? 'Sending…' : 'Email Receipt'}
+            </Button>
+          )}
           <Button variant="gold" size="sm" onClick={() => window.print()} className="gap-1.5">
             <Printer className="h-4 w-4" /> Print / Save as PDF
           </Button>

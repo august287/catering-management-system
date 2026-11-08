@@ -304,6 +304,21 @@ async function runTests() {
     const ccd = fs.readFileSync('./src/hooks/useCateringData.ts', 'utf-8');
     const createBody = ccd.slice(ccd.indexOf('const createReservation'), ccd.indexOf('const updateReservationStatus'));
     assert.ok(createBody.indexOf('isDateFullyBooked') < createBody.indexOf("from('reservations')"), 'createReservation must check availability before inserting');
+    // Auto-cancel of double bookings: keep the most advanced, then earliest, booking.
+    const dupes = [
+      { id: 10, event_date: '2026-12-01', status: 'pending', created_at: '2026-10-01T00:00:00Z' },
+      { id: 11, event_date: '2026-12-01', status: 'confirmed', created_at: '2026-10-05T00:00:00Z' },
+      { id: 12, event_date: '2026-12-01', status: 'pending', created_at: '2026-09-01T00:00:00Z' },
+      { id: 13, event_date: '2026-12-02', status: 'pending', created_at: '2026-10-02T00:00:00Z' },
+      { id: 14, event_date: '2026-12-02', status: 'pending', created_at: '2026-10-01T00:00:00Z' },
+      { id: 15, event_date: '2026-12-02', status: 'cancelled', created_at: '2026-08-01T00:00:00Z' },
+      { id: 16, event_date: '2026-12-03', status: 'pending', created_at: '2026-10-01T00:00:00Z' },
+    ];
+    const loserIds = avail.findDoubleBookingLosers(dupes).map(r => r.id).sort((a, b) => a - b);
+    assert.deepStrictEqual(loserIds, [10, 12, 13], 'confirmed beats pending; earliest pending wins; cancelled ignored');
+    assert.deepStrictEqual(avail.findDoubleBookingLosers(sample.filter(r => r.id !== 5)), [], 'no losers without a double booking');
+    const resolveSql = fs.readFileSync('./supabase/migrations/012_auto_cancel_double_bookings.sql', 'utf-8');
+    assert.ok(resolveSql.includes("when 'in_progress' then 0") && resolveSql.includes("when 'confirmed' then 1"), 'SQL resolver must rank like findDoubleBookingLosers');
     console.log('✓ src/lib/availability.ts & double-booking guard tests passed');
 
 

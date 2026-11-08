@@ -8,7 +8,11 @@ import {
   AlertCircle,
   Image as ImageIcon,
   Printer,
+  QrCode,
+  Copy,
+  Download,
 } from 'lucide-react';
+import { Dialog } from '@/components/ui/Dialog';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -24,8 +28,25 @@ import { formatCurrency, formatDate, isValidPaymentReference, PAYMENT_REFERENCE_
 import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_TYPE_LABELS } from '@/lib/paymentLabels';
 import { PaymentType, PaymentMethod, Payment } from '@/types/database';
 
+// Where customers send GCash / InstaPay payments.
+const PAYMENT_QR_SRC = '/images/payment-qr.png';
+const PAYMENT_MOBILE_NO = '09198104712';
+const PAYMENT_ACCOUNT_NAME = 'RE****R G.';
+
 export function Payments() {
   const [searchParams] = useSearchParams();
+  const [qrOpen, setQrOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copyMobileNo = async () => {
+    try {
+      await navigator.clipboard.writeText(PAYMENT_MOBILE_NO);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard blocked; the number is still visible to copy by hand */
+    }
+  };
   const { profile } = useAuth();
   const { reservations, payments, themes, packages, submitPayment } = useCateringData();
 
@@ -410,7 +431,7 @@ export function Payments() {
                     value={paymentMethod}
                     onChange={e => setPaymentMethod(e.target.value as PaymentMethod)}
                   >
-                    <option value="gcash">GCash (0917-888-0001)</option>
+                    <option value="gcash">GCash / InstaPay QR ({PAYMENT_MOBILE_NO})</option>
                     <option value="bank_transfer">BDO / BPI Bank Transfer</option>
                     <option value="credit_card">Credit / Debit Card</option>
                     <option value="cash">Cash on Site</option>
@@ -533,11 +554,41 @@ export function Payments() {
             </CardHeader>
             <CardContent className="space-y-4 text-xs pt-4">
               <div className="rounded-lg bg-ink-soft p-3 border border-ink-muted/60">
-                <span className="text-gold-light font-bold block uppercase text-[10px]">
-                  GCash Express
+                <span className="text-gold-light font-bold flex items-center gap-1.5 uppercase text-[10px]">
+                  <QrCode className="h-3.5 w-3.5" /> Scan to Pay · InstaPay QR
                 </span>
-                <p className="font-mono text-base font-bold text-white mt-0.5">0917-888-0001</p>
-                <p className="text-cream/70 text-[11px]">Account Name: Natalie's Catering Corp</p>
+                <button
+                  type="button"
+                  onClick={() => setQrOpen(true)}
+                  className="mt-2 block w-full overflow-hidden rounded-md bg-white p-2 transition hover:ring-2 hover:ring-gold"
+                  aria-label="Enlarge payment QR code"
+                >
+                  <img
+                    src={PAYMENT_QR_SRC}
+                    alt={`InstaPay QR code for ${PAYMENT_MOBILE_NO}`}
+                    className="mx-auto w-full max-w-[220px]"
+                  />
+                </button>
+                <p className="mt-2 text-cream/70 text-[11px]">
+                  Scan with GCash, Maya, or any bank app that supports InstaPay. Tap the QR to enlarge.
+                </p>
+              </div>
+
+              <div className="rounded-lg bg-ink-soft p-3 border border-ink-muted/60">
+                <span className="text-gold-light font-bold block uppercase text-[10px]">
+                  GCash / InstaPay Mobile No.
+                </span>
+                <div className="mt-0.5 flex items-center justify-between gap-2">
+                  <p className="font-mono text-base font-bold text-white">{PAYMENT_MOBILE_NO}</p>
+                  <button
+                    type="button"
+                    onClick={copyMobileNo}
+                    className="flex shrink-0 items-center gap-1 rounded border border-ink-muted/60 px-2 py-1 text-[10px] font-semibold text-cream/80 hover:border-gold hover:text-gold-light"
+                  >
+                    <Copy className="h-3 w-3" /> {copied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <p className="text-cream/70 text-[11px]">Account Name: {PAYMENT_ACCOUNT_NAME}</p>
               </div>
 
               <div className="rounded-lg bg-ink-soft p-3 border border-ink-muted/60">
@@ -642,6 +693,35 @@ export function Payments() {
           />
         </CardContent>
       </Card>
+
+      <Dialog
+        open={qrOpen}
+        onOpenChange={setQrOpen}
+        title="Scan to Pay"
+        description={`InstaPay QR · ${PAYMENT_MOBILE_NO}`}
+        className="max-w-sm"
+      >
+        <img
+          src={PAYMENT_QR_SRC}
+          alt={`InstaPay QR code for ${PAYMENT_MOBILE_NO}`}
+          className="mx-auto w-full rounded-md border border-border"
+        />
+        <p className="mt-3 text-center text-xs text-text-muted">
+          After paying, enter the reference number and upload a screenshot of the receipt in the form.
+        </p>
+        <div className="mt-4 flex gap-2">
+          <a
+            href={PAYMENT_QR_SRC}
+            download="Natalies-Catering-Payment-QR.png"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-border px-3 py-2 text-xs font-semibold text-ink hover:bg-cream-dark"
+          >
+            <Download className="h-4 w-4" /> Save QR
+          </a>
+          <Button variant="gold" className="flex-1" onClick={() => setQrOpen(false)}>
+            Done
+          </Button>
+        </div>
+      </Dialog>
 
       <PaymentReceiptDialog
         open={receiptPayment !== null}

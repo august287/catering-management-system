@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { Badge } from '@/components/ui/Badge';
 import { ConfirmationModal } from '@/components/ui/Modal';
+import { Dialog } from '@/components/ui/Dialog';
 import { ReservationCalendar } from '@/components/ReservationCalendar';
 import { fetchAvailability } from '@/hooks/useDateAvailability';
 import { DOUBLE_BOOKING_MESSAGE, isDateFullyBooked } from '@/lib/availability';
@@ -57,7 +58,12 @@ export function BookReservation() {
   const [step, setStep] = useState<number>(1);
   const [themeId, setThemeId] = useState<number>(initialThemeId);
   const [packageId, setPackageId] = useState<number>(initialPkgId);
-  const [guestCount, setGuestCount] = useState<number>(MIN_GUEST_COUNT);
+  // Kept as text so the field can be cleared while typing (a number state forced a stuck "0").
+  const [guestInput, setGuestInput] = useState<string>(String(MIN_GUEST_COUNT));
+  const guestCount = guestInput === '' ? 0 : parseInt(guestInput, 10);
+  const [guestTouched, setGuestTouched] = useState(false);
+  const [paxPopup, setPaxPopup] = useState<string | null>(null);
+  const guestInputRef = useRef<HTMLInputElement>(null);
 
   // Rental quantities: { [rental_item_id]: quantity }
   const [selectedRentals, setSelectedRentals] = useState<Record<number, number>>({});
@@ -69,7 +75,7 @@ export function BookReservation() {
   // A date picked on the availability page arrives as ?date=YYYY-MM-DD.
   const [eventDate, setEventDate] = useState<string>(() => {
     const d = searchParams.get('date') || '';
-    return /^d{4}-d{2}-d{2}$/.test(d) && isAtLeastOneWeekAhead(d) ? d : '';
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) && isAtLeastOneWeekAhead(d) ? d : '';
   });
   const [eventTime, setEventTime] = useState<string>('16:00');
   const [venueAddress, setVenueAddress] = useState<string>('');
@@ -104,6 +110,26 @@ export function BookReservation() {
     Math.max(MIN_GUEST_COUNT, selectedPackage?.min_pax || MIN_GUEST_COUNT)
   );
 
+  const guestCountError =
+    guestInput === ''
+      ? 'Please enter the number of guests.'
+      : guestCount > MAX_GUEST_COUNT
+      ? `Guest count cannot exceed ${MAX_GUEST_COUNT} pax.`
+      : guestCount < minGuestCount
+      ? `${selectedPackage?.name || 'This package'} requires at least ${minGuestCount} pax.`
+      : '';
+
+  const handleGuestChange = (raw: string) => {
+    const digits = raw.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 4);
+    setGuestInput(digits);
+    setGuestTouched(true);
+    if (digits !== '' && parseInt(digits, 10) > MAX_GUEST_COUNT) {
+      setPaxPopup(
+        `We can cater a maximum of ${MAX_GUEST_COUNT} guests per event. You entered ${parseInt(digits, 10)} pax. Please lower the guest count.`
+      );
+    }
+  };
+
   // Financial Calculations
   const packageTotal = (selectedPackage?.price_per_pax || 0) * guestCount;
 
@@ -126,6 +152,18 @@ export function BookReservation() {
         return copy;
       }
       return { ...prev, [rentalId]: next };
+    });
+  };
+
+  // Typed quantity: digits only, capped at available stock.
+  const setRentalQty = (rentalId: number, raw: string, stock: number) => {
+    const digits = raw.replace(/\D/g, '');
+    const next = digits === '' ? 0 : Math.min(stock, parseInt(digits, 10));
+    setSelectedRentals(prev => {
+      const copy = { ...prev };
+      if (next <= 0) delete copy[rentalId];
+      else copy[rentalId] = next;
+      return copy;
     });
   };
 
@@ -164,14 +202,12 @@ export function BookReservation() {
       } catch {
         // Offline check failed; the save step re-checks and the database blocks overlaps.
       }
-      if (!isValidGuestCount(guestCount)) {
-        setErrorMessage(
-          `Guest count must be between ${MIN_GUEST_COUNT} and ${MAX_GUEST_COUNT} pax.`
+      if (guestCountError || !isValidGuestCount(guestCount)) {
+        setGuestTouched(true);
+        setPaxPopup(
+          guestCountError ||
+            `Guest count must be between ${MIN_GUEST_COUNT} and ${MAX_GUEST_COUNT} pax.`
         );
-        return;
-      }
-      if (guestCount < minGuestCount) {
-        setErrorMessage(`This package requires a minimum of ${minGuestCount} guests.`);
         return;
       }
       setStep(4);
@@ -192,17 +228,13 @@ export function BookReservation() {
       return;
     }
 
-    if (!isValidGuestCount(guestCount)) {
+    if (guestCountError || !isValidGuestCount(guestCount)) {
       setStep(3);
-      setErrorMessage(
-        `Guest count must be between ${MIN_GUEST_COUNT} and ${MAX_GUEST_COUNT} pax.`
+      setGuestTouched(true);
+      setPaxPopup(
+        guestCountError ||
+          `Guest count must be between ${MIN_GUEST_COUNT} and ${MAX_GUEST_COUNT} pax.`
       );
-      return;
-    }
-
-    if (guestCount < minGuestCount) {
-      setStep(3);
-      setErrorMessage(`This package requires a minimum of ${minGuestCount} guests.`);
       return;
     }
 
@@ -406,6 +438,7 @@ export function BookReservation() {
                       <p className="text-xs text-text-muted">
                         {formatCurrency(rental.rate_per_unit)} / piece
                       </p>
+                      <p className="text-[11px] text-text-faint">{rental.stock_quantity} available</p>
                     </div>
 
                     <div className="flex shrink-0 items-center gap-1.5">
@@ -418,9 +451,17 @@ export function BookReservation() {
                       >
                         <Minus className="h-3.5 w-3.5" />
                       </button>
-                      <span className="w-8 text-center text-sm font-bold text-ink" aria-live="polite" aria-label={`${qty} selected`}>
-                        {qty}
-                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={qty === 0 ? '' : String(qty)}
+                        placeholder="0"
+                        onChange={e => setRentalQty(rental.id, e.target.value, rental.stock_quantity)}
+                        onFocus={e => e.target.select()}
+                        aria-label={`Quantity of ${rental.name} (max ${rental.stock_quantity})`}
+                        className="h-9 w-14 rounded-md border border-border bg-white text-center text-sm font-bold text-ink placeholder:text-text-faint focus-visible:border-gold focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold sm:h-8"
+                      />
                       <button
                         type="button"
                         onClick={() => updateRentalQty(rental.id, 1)}
@@ -499,17 +540,33 @@ export function BookReservation() {
                   Guest Count (Pax)
                 </label>
                 <Input id="guest-count"
-                  type="number"
+                  ref={guestInputRef}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoComplete="off"
                   required
-                  min={minGuestCount}
-                  max={MAX_GUEST_COUNT}
-                  step={1}
-                  value={guestCount}
-                  onChange={e => setGuestCount(Number(e.target.value))}
+                  value={guestInput}
+                  onChange={e => handleGuestChange(e.target.value)}
+                  onBlur={() => setGuestTouched(true)}
+                  placeholder={`${minGuestCount}–${MAX_GUEST_COUNT}`}
+                  aria-invalid={guestTouched && !!guestCountError}
+                  aria-describedby="guest-count-help"
+                  className={
+                    guestTouched && guestCountError
+                      ? 'border-red-500 ring-2 ring-red-500/40 focus-visible:border-red-500 focus-visible:ring-red-500'
+                      : undefined
+                  }
                 />
-                <span className="text-[11px] text-text-muted">
-                  Guest count must be between {minGuestCount} and {MAX_GUEST_COUNT} pax
-                  {selectedPackage ? ` for ${selectedPackage.name}` : ''}.
+                <span
+                  id="guest-count-help"
+                  className={`mt-1 block text-[11px] ${guestTouched && guestCountError ? 'font-semibold text-red-600' : 'text-text-muted'}`}
+                >
+                  {guestTouched && guestCountError
+                    ? guestCountError
+                    : `Guest count must be between ${minGuestCount} and ${MAX_GUEST_COUNT} pax${
+                        selectedPackage ? ` for ${selectedPackage.name}` : ''
+                      }.`}
                 </span>
               </div>
             </div>
@@ -651,6 +708,40 @@ export function BookReservation() {
           </Button>
         )}
       </div>
+
+      <Dialog
+        open={paxPopup !== null}
+        onOpenChange={open => {
+          if (!open) {
+            setPaxPopup(null);
+            window.setTimeout(() => guestInputRef.current?.focus(), 0);
+          }
+        }}
+        className="max-w-md"
+      >
+        <div className="flex flex-col items-center text-center" role="alertdialog" aria-labelledby="pax-popup-title">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
+            <Users className="h-7 w-7 text-red-600" aria-hidden="true" />
+          </div>
+          <h3 id="pax-popup-title" className="mt-4 font-serif text-lg font-bold text-ink">
+            Invalid Guest Count
+          </h3>
+          <p className="mt-2 text-sm leading-relaxed text-text-muted">{paxPopup}</p>
+          <p className="mt-1 text-xs font-semibold text-ink">
+            Allowed: {minGuestCount}–{MAX_GUEST_COUNT} pax
+          </p>
+          <Button
+            variant="gold"
+            className="mt-6 w-full"
+            onClick={() => {
+              setPaxPopup(null);
+              window.setTimeout(() => guestInputRef.current?.focus(), 0);
+            }}
+          >
+            OK, I'll fix it
+          </Button>
+        </div>
+      </Dialog>
 
       <ConfirmationModal
         open={showConfirm}

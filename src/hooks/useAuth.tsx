@@ -21,6 +21,9 @@ interface AuthContextType {
     phone?: string
   ) => Promise<{ success: boolean; requiresConfirmation?: boolean; message?: string; error?: string }>;
   logout: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; demoReset?: boolean; error?: string }>;
+  updatePassword: (newPassword: string, demoEmail?: string) => Promise<{ success: boolean; error?: string }>;
+  verifyResetCode: (email: string, code: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -46,6 +49,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
         if (!mounted) return;
         clearTimeout(timeout);
+
+        // A reset link that landed on another page (e.g. Supabase fell back to the
+        // Site URL) must still open the new-password form, not the dashboard.
+        if (_event === 'PASSWORD_RECOVERY' && window.location.pathname !== '/reset-password') {
+          window.location.replace('/reset-password');
+          return;
+        }
 
         if (session?.user) {
           setUser({ id: session.user.id, email: session.user.email || '' });
@@ -261,6 +271,72 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Sends a reset link by email. With Supabase the link opens /reset-password with a
+  // recovery session. In offline demo mode there is no mail server, so the caller is
+  // told to go straight to the reset form.
+  const requestPasswordReset = async (
+    email: string
+  ): Promise<{ success: boolean; demoReset?: boolean; error?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return { success: false, error: 'Please enter a valid email address.' };
+    }
+    if (isSupabaseConfigured()) {
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+        // Must be listed under Auth > URL Configuration > Redirect URLs in Supabase.
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    }
+    const exists = mockStore.getAccounts().some(a => a.email.toLowerCase() === cleanEmail);
+    if (!exists) return { success: false, error: 'No account found with that email address.' };
+    return { success: true, demoReset: true };
+  };
+
+  // Signs the user in with the 6-digit code from the reset email, so they can
+  // then set a new password. Works even if the email link fails to open.
+  const verifyResetCode = async (
+    email: string,
+    code: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const token = code.replace(/\D/g, '');
+    if (token.length < 6) return { success: false, error: 'Enter the 6-digit code from the email.' };
+    if (!isSupabaseConfigured()) return { success: false, error: 'Reset codes need the live Supabase backend.' };
+    const { data, error } = await supabase.auth.verifyOtp({ email: cleanEmail, token, type: 'recovery' });
+    if (error || !data.session) {
+      return {
+        success: false,
+        error: /expired|invalid/i.test(error?.message || '')
+          ? 'That code is wrong or has expired. Check the latest email, or send a new code.'
+          : error?.message || 'Could not verify the code. Please try again.',
+      };
+    }
+    setUser({ id: data.session.user.id, email: data.session.user.email || cleanEmail });
+    return { success: true };
+  };
+
+  const updatePassword = async (
+    newPassword: string,
+    demoEmail?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (isSupabaseConfigured()) {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    }
+    const cleanEmail = (demoEmail || '').trim().toLowerCase();
+    const accounts = mockStore.getAccounts();
+    if (!accounts.some(a => a.email.toLowerCase() === cleanEmail)) {
+      return { success: false, error: 'This reset link is invalid. Please request a new one.' };
+    }
+    mockStore.saveAccounts(
+      accounts.map(a => (a.email.toLowerCase() === cleanEmail ? { ...a, password: newPassword } : a))
+    );
+    return { success: true };
+  };
+
   const logout = async (): Promise<void> => {
     if (isSupabaseConfigured()) {
       try {
@@ -285,6 +361,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         register,
         logout,
+        requestPasswordReset,
+        updatePassword,
+        verifyResetCode,
       }}
     >
       {children}

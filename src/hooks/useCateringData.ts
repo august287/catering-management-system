@@ -7,11 +7,14 @@ import {
   isValidPaymentReference,
   MIN_GUEST_COUNT,
   MAX_GUEST_COUNT,
+  formatDate,
 } from '@/lib/utils';
 import {
   DOUBLE_BOOKING_MESSAGE,
+  AUTO_CANCEL_TITLE,
   blocksDate,
   buildAvailabilityMap,
+  findDoubleBookingLosers,
   isDateFullyBooked,
   isDoubleBookingError,
 } from '@/lib/availability';
@@ -31,6 +34,67 @@ import {
 } from '@/types/database';
 
 const DATA_CHANGED_EVENT = 'catering:data-changed';
+export const AUTO_CANCELLED_EVENT = 'catering:auto-cancelled';
+
+// Shared across every hook instance so only one auto-cancel runs at a time.
+let resolvingDoubleBookings = false;
+
+/**
+ * Cancel bookings that double-book a date (see findDoubleBookingLosers).
+ * Returns the booking codes that were cancelled.
+ */
+async function resolveDoubleBookings(reservations: Reservation[], profiles: Profile[]): Promise<string[]> {
+  if (resolvingDoubleBookings) return [];
+  if (findDoubleBookingLosers(reservations).length === 0) return [];
+  resolvingDoubleBookings = true;
+  try {
+    if (isSupabaseConfigured()) {
+      // Server does the work atomically and notifies customers. Non-admins are refused.
+      const { data, error } = await supabase.rpc('resolve_double_bookings');
+      if (error) {
+        if (error.code !== '42501') console.warn('Auto-cancel of double bookings failed:', error.message);
+        return [];
+      }
+      return ((data || []) as { booking_code: string }[]).map(r => r.booking_code);
+    }
+
+    // Offline demo store: same rule, applied locally.
+    const all = mockStore.getReservations();
+    const losers = findDoubleBookingLosers(all);
+    if (losers.length === 0) return [];
+    const loserIds = new Set(losers.map(l => l.id));
+    mockStore.saveReservations(
+      all.map(r => (loserIds.has(r.id) ? { ...r, status: 'cancelled' as ReservationStatus } : r))
+    );
+    const adminIds = profiles.filter(p => p.role === 'admin').map(p => p.id);
+    const now = Date.now();
+    const notes: Notification[] = losers.flatMap((r, i) => {
+      const when = formatDate(r.event_date);
+      return [
+        {
+          id: now + i * 10,
+          user_id: r.customer_id,
+          title: AUTO_CANCEL_TITLE,
+          message: `Your booking ${r.booking_code} on ${when} was automatically cancelled because the date was already booked. Please choose another date. Any payment made will be refunded or moved to your new booking.`,
+          is_read: false,
+          created_at: new Date().toISOString(),
+        },
+        ...adminIds.map((adminId, j) => ({
+          id: now + i * 10 + j + 1,
+          user_id: adminId,
+          title: 'Double Booking Auto-Cancelled',
+          message: `${r.booking_code} on ${when} was automatically cancelled to resolve a double booking.`,
+          is_read: false,
+          created_at: new Date().toISOString(),
+        })),
+      ];
+    });
+    mockStore.saveNotifications([...notes, ...mockStore.getNotifications()]);
+    return losers.map(l => l.booking_code);
+  } finally {
+    resolvingDoubleBookings = false;
+  }
+}
 
 export function useCateringData() {
   const supabaseActive = isSupabaseConfigured();
@@ -188,6 +252,57 @@ export function useCateringData() {
       };
     }
   }, [refreshData, refreshNotifications, supabaseActive]);
+
+  // Live bookings: reload when reservations or payments change anywhere, so the
+  // event calendar, reservation lists and dashboards update without a refresh.
+  useEffect(() => {
+    let timer: number | undefined;
+    // Several rows often change together (a booking + its rentals); reload once.
+    const scheduleRefresh = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => refreshData(), 300);
+    };
+
+    // Offline demo store: another tab wrote localStorage.
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key || /caterpro_(reservations|payments|notifications)/.test(e.key)) scheduleRefresh();
+    };
+    window.addEventListener('storage', onStorage);
+
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let pollId: number | undefined;
+    if (supabaseActive) {
+      channel = supabase
+        .channel('bookings-' + Math.random().toString(36).substring(2, 9))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, scheduleRefresh)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, scheduleRefresh)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'reservation_rentals' }, scheduleRefresh)
+        .subscribe();
+      // Safety net in case Realtime is blocked on the network.
+      pollId = window.setInterval(() => {
+        if (document.visibilityState === 'visible') refreshData();
+      }, 45000);
+    }
+
+    return () => {
+      window.clearTimeout(timer);
+      window.clearInterval(pollId);
+      window.removeEventListener('storage', onStorage);
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [refreshData, supabaseActive]);
+
+  // Automation: whenever a date ends up double-booked, cancel the extra
+  // booking(s) and notify the customers affected.
+  useEffect(() => {
+    if (findDoubleBookingLosers(reservations).length === 0) return;
+    resolveDoubleBookings(reservations, profiles).then(codes => {
+      if (codes.length === 0) return;
+      // No detail: every hook instance (this one included) reloads.
+      window.dispatchEvent(new CustomEvent(DATA_CHANGED_EVENT));
+      window.dispatchEvent(new CustomEvent(AUTO_CANCELLED_EVENT, { detail: codes }));
+    });
+  }, [reservations, profiles]);
 
   // --- Menu Item Actions ---
   const addMenuItem = async (item: Omit<MenuItem, 'id'>) => {

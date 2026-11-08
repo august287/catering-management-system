@@ -195,9 +195,14 @@ export function Login() {
             </div>
 
             <div>
-              <label htmlFor="login-password" className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
-                Password
-              </label>
+              <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                <label htmlFor="login-password" className="block text-xs font-semibold uppercase tracking-wider text-text-muted">
+                  Password
+                </label>
+                <Link to="/forgot-password" className="text-xs font-semibold text-gold hover:underline">
+                  Forgot password?
+                </Link>
+              </div>
               <PasswordInput id="login-password"
                 required
                 value={password}

@@ -17,6 +17,7 @@ import { Payment } from '@/types/database';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { useToast } from '@/components/ui/Toast';
+import { emailReceipt } from '@/lib/receiptEmail';
 
 export function Payments() {
   const { payments, verifyPayment, reservations, profiles, themes, packages } = useCateringData();
@@ -115,6 +116,18 @@ export function Payments() {
     });
     if (selectedProof?.id === id) {
       setSelectedProof(prev => (prev ? { ...prev, status } : null));
+    }
+    // Send the official receipt to the customer's Gmail once the payment is verified.
+    if (status === 'verified' && isSupabaseConfigured()) {
+      emailReceipt(id)
+        .then(to => toast({ title: 'Receipt emailed', description: `Sent to ${to}.` }))
+        .catch(err =>
+          toast({
+            tone: 'error',
+            title: 'Receipt email not sent',
+            description: err?.message || 'You can resend it from the receipt preview.',
+          })
+        );
     }
   };
 

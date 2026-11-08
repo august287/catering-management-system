@@ -62,6 +62,28 @@ npm run build
 
 ---
 
+## Live Backend Setup (Supabase)
+
+These steps are needed once on the live Supabase project. The offline demo works without them.
+
+### 1. Auto-cancel double bookings
+Run `supabase/migrations/012_auto_cancel_double_bookings.sql` in the Supabase SQL Editor. It cancels any date that holds more than one active booking (keeps the most advanced status, then the earliest booking) and notifies the affected customers. The admin app re-runs it automatically whenever a double booking appears.
+
+### 2. Forgot password
+In **Authentication → URL Configuration → Redirect URLs**, add `https://<your-site>/reset-password` (and `http://localhost:3000/reset-password` for local testing).
+
+### 3. Email receipts through Gmail
+Receipts are emailed to the customer automatically when an admin verifies a payment, and can be resent with **Email Receipt** in the receipt preview.
+
+1. On the business Gmail account, turn on 2-Step Verification, then create an **App password** (Google Account → Security → App passwords).
+2. In Supabase → **Edge Functions → Secrets**, add `GMAIL_USER` and `GMAIL_APP_PASSWORD`.
+3. The code lives in `supabase/functions/send-receipt/index.ts` and is deployed on Supabase as the function **`swift-api`** (the name the dashboard gave it). The app calls it by that name, set in `RECEIPT_FUNCTION_NAME` in `src/lib/receiptEmail.ts`. To update it, open `swift-api` in the dashboard editor, paste the new code, and deploy. If you deploy under another name, change `RECEIPT_FUNCTION_NAME` to match.
+
+### 4. Realtime
+Migrations 011 and 012 add `reservations` and `payments` to the `supabase_realtime` publication, so calendars and lists update live without a page refresh.
+
+---
+
 ## Tech Stack
 - **Build Tool:** Vite
 - **UI Framework:** React 18 + TypeScript

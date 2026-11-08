@@ -66,6 +66,42 @@ export function getDateStatus(
   return booked > 0 ? 'limited' : 'available';
 }
 
+export const AUTO_CANCEL_TITLE = 'Reservation Auto-Cancelled (Double Booking)';
+
+// Further along wins: an in-progress or confirmed event outranks a pending one.
+const STATUS_PRIORITY: Partial<Record<ReservationStatus, number>> = {
+  in_progress: 0,
+  confirmed: 1,
+  pending: 2,
+};
+
+/**
+ * Bookings that must be cancelled so no date holds more than `capacity` active
+ * events. Per date, keeps the most advanced status, then the earliest booking.
+ * Mirrors resolve_double_bookings() in supabase/migrations/012_auto_cancel_double_bookings.sql.
+ */
+export function findDoubleBookingLosers<
+  T extends Pick<Reservation, 'id' | 'event_date' | 'status' | 'created_at'>
+>(reservations: T[], capacity: number = MAX_EVENTS_PER_DAY): T[] {
+  const byDate: Record<string, T[]> = {};
+  for (const r of reservations) {
+    if (!r.event_date || !blocksDate(r.status)) continue;
+    (byDate[r.event_date.slice(0, 10)] ||= []).push(r);
+  }
+  const losers: T[] = [];
+  for (const list of Object.values(byDate)) {
+    if (list.length <= capacity) continue;
+    list.sort(
+      (a, b) =>
+        (STATUS_PRIORITY[a.status] ?? 9) - (STATUS_PRIORITY[b.status] ?? 9) ||
+        (a.created_at || '').localeCompare(b.created_at || '') ||
+        a.id - b.id
+    );
+    losers.push(...list.slice(capacity));
+  }
+  return losers;
+}
+
 export function isDoubleBookingError(message: string | undefined | null): boolean {
   return !!message && message.includes('DATE_FULLY_BOOKED');
 }
