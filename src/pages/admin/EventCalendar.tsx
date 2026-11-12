@@ -40,10 +40,16 @@ export function EventCalendar() {
     [reservations, profiles]
   );
 
-  const dayEvents = withCustomers
-    .filter(r => r.event_date.slice(0, 10) === selectedKey)
+  // Only bookings that still hold a date are shown by name. Completed and cancelled
+  // ones are left off the calendar so old names don't look like current events.
+  const activeEvents = useMemo(() => withCustomers.filter(r => blocksDate(r.status)), [withCustomers]);
+
+  const onSelectedDay = withCustomers.filter(r => r.event_date.slice(0, 10) === selectedKey);
+  const dayEvents = onSelectedDay
+    .filter(r => blocksDate(r.status))
     .sort((a, b) => a.event_time.localeCompare(b.event_time));
-  const activeOnDay = dayEvents.filter(r => blocksDate(r.status)).length;
+  const activeOnDay = dayEvents.length;
+  const closedOnDay = onSelectedDay.length - dayEvents.length;
 
   // Dates that somehow hold more active bookings than capacity (legacy data).
   const conflicts = useMemo(() => {
@@ -64,7 +70,8 @@ export function EventCalendar() {
       <div>
         <h2 className="font-serif text-2xl font-bold text-ink">Event Calendar</h2>
         <p className="text-sm text-text-muted">
-          Live view of every booked date. Customers can only pick dates shown as available.
+          Live view of active bookings (pending, confirmed, and in progress). Completed and cancelled events are
+          not shown. Customers can only pick dates shown as available.
         </p>
       </div>
 
@@ -97,7 +104,7 @@ export function EventCalendar() {
           value={selectedKey}
           onSelect={setSelectedKey}
           minBookableKey={getMinimumBookingDate()}
-          reservations={withCustomers}
+          reservations={activeEvents}
         />
 
         <div className="space-y-6">
@@ -142,6 +149,16 @@ export function EventCalendar() {
                     <p className="font-semibold text-ink">{formatCurrency(r.total_amount)}</p>
                   </div>
                 ))
+              )}
+              {closedOnDay > 0 && (
+                <p className="rounded-md bg-cream-dark/60 px-3 py-2 text-[11px] text-text-muted">
+                  {closedOnDay} completed or cancelled booking{closedOnDay > 1 ? 's' : ''} on this date{' '}
+                  {closedOnDay > 1 ? 'are' : 'is'} hidden here. See{' '}
+                  <Link to="/admin/reservations" className="font-semibold text-gold-dark hover:underline">
+                    Reservations
+                  </Link>{' '}
+                  for history.
+                </p>
               )}
               {dayEvents.length > 0 && (
                 <Link

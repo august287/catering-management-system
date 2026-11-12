@@ -323,7 +323,7 @@ export function Payments() {
           <CardHeader>
             <CardTitle>Submit a Payment</CardTitle>
             <p className="text-xs text-text-muted">
-              Pay via GCash, bank transfer, card, or cash, then upload your proof of payment for
+              Pay via GCash, card, or cash, then upload your proof of payment for
               verification.
             </p>
           </CardHeader>
@@ -432,7 +432,6 @@ export function Payments() {
                     onChange={e => setPaymentMethod(e.target.value as PaymentMethod)}
                   >
                     <option value="gcash">GCash / InstaPay QR ({PAYMENT_MOBILE_NO})</option>
-                    <option value="bank_transfer">BDO / BPI Bank Transfer</option>
                     <option value="credit_card">Credit / Debit Card</option>
                     <option value="cash">Cash on Site</option>
                   </Select>
@@ -482,7 +481,7 @@ export function Payments() {
                     placeholder={
                       paymentMethod === 'cash'
                         ? 'Optional for cash payments'
-                        : 'e.g. GCASH-19284091 or BDO-REF-4921'
+                        : 'e.g. GCASH-19284091'
                     }
                     value={referenceNumber}
                     onChange={e => setReferenceNumber(e.target.value)}
@@ -490,7 +489,7 @@ export function Payments() {
                   <p className="mt-1 text-[11px] text-text-muted">
                     {paymentMethod === 'cash'
                       ? 'Optional for cash on site. '
-                      : 'Required for GCash, bank, and card payments. '}
+                      : 'Required for GCash and card payments. '}
                     6–80 characters using letters, numbers, hyphens, underscores, or periods only.
                   </p>
                 </div>
@@ -524,7 +523,7 @@ export function Payments() {
                 </div>
                 <p className="mt-1 text-[11px] text-text-muted">
                   {requiresProof
-                    ? 'Required for GCash, bank transfer, and card payments. Upload a screenshot or photo of the transaction. JPG, PNG or WebP · max 5 MB.'
+                    ? 'Required for GCash and card payments. Upload a screenshot or photo of the transaction. JPG, PNG or WebP · max 5 MB.'
                     : 'Optional for cash payments. Upload a photo if available. JPG, PNG or WebP · max 5 MB.'}
                 </p>
               </div>
@@ -589,22 +588,6 @@ export function Payments() {
                   </button>
                 </div>
                 <p className="text-cream/70 text-[11px]">Account Name: {PAYMENT_ACCOUNT_NAME}</p>
-              </div>
-
-              <div className="rounded-lg bg-ink-soft p-3 border border-ink-muted/60">
-                <span className="text-gold-light font-bold block uppercase text-[10px]">
-                  BDO Unibank (Checking)
-                </span>
-                <p className="font-mono text-base font-bold text-white mt-0.5">0049-1234-5678</p>
-                <p className="text-cream/70 text-[11px]">Account Name: Natalie's Catering Services</p>
-              </div>
-
-              <div className="rounded-lg bg-ink-soft p-3 border border-ink-muted/60">
-                <span className="text-gold-light font-bold block uppercase text-[10px]">
-                  BPI Savings
-                </span>
-                <p className="font-mono text-base font-bold text-white mt-0.5">3890-4829-11</p>
-                <p className="text-cream/70 text-[11px]">Account Name: Natalie's Catering Services</p>
               </div>
             </CardContent>
           </Card>

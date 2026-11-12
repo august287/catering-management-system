@@ -41,6 +41,38 @@ const STATUS_LABELS: Record<string, string> = {
   rejected: 'REJECTED',
 };
 
+// Receipt totals as of one payment. Same logic as src/lib/receiptMath.ts (keep in sync).
+interface ReceiptPaymentLike {
+  id: number;
+  amount: number | string;
+  status: string;
+  paid_at?: string | null;
+}
+function madeBefore(a: ReceiptPaymentLike, b: ReceiptPaymentLike): boolean {
+  const ta = a.paid_at ? new Date(a.paid_at).getTime() : NaN;
+  const tb = b.paid_at ? new Date(b.paid_at).getTime() : NaN;
+  if (!isNaN(ta) && !isNaN(tb) && ta !== tb) return ta < tb;
+  return a.id < b.id;
+}
+function receiptSummary(payment: ReceiptPaymentLike, all: ReceiptPaymentLike[], contractTotal: number) {
+  const total = Math.max(0, Number(contractTotal) || 0);
+  const paidBefore = all
+    .filter(p => p.id !== payment.id && p.status === 'verified' && madeBefore(p, payment))
+    .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const thisAmount = Number(payment.amount) || 0;
+  const thisCounted = payment.status === 'verified';
+  const paidToDate = paidBefore + (thisCounted ? thisAmount : 0);
+  return {
+    contractTotal: total,
+    paidBefore,
+    thisAmount,
+    thisCounted,
+    paidToDate,
+    balanceAfter: Math.max(0, total - paidToDate),
+    overpaid: Math.max(0, paidToDate - total),
+  };
+}
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -129,13 +161,13 @@ Deno.serve(async req => {
 
   const { data: allPayments } = await admin
     .from('payments')
-    .select('amount, status')
+    .select('id, amount, status, paid_at')
     .eq('reservation_id', reservation.id);
-  const verifiedTotal = (allPayments || [])
-    .filter(p => p.status === 'verified')
-    .reduce((sum, p) => sum + Number(p.amount), 0);
-  const contractTotal = Number(reservation.total_amount || 0);
-  const balance = Math.max(0, contractTotal - verifiedTotal);
+  // Totals as of THIS payment, so a resent older receipt doesn't include later payments.
+  const summary = receiptSummary(payment, allPayments || [], Number(reservation.total_amount || 0));
+  const counted = summary.thisCounted;
+  const notCounted = payment.status === 'rejected' ? 'rejected, not counted' : 'pending verification, not counted yet';
+  const receiptTitle = counted ? 'Official Receipt' : 'Payment Receipt';
 
   const receiptNo = `RCPT-${String(payment.id).padStart(6, '0')}`;
   const customerName = reservation.customer?.name || 'Customer';
@@ -152,7 +184,7 @@ Deno.serve(async req => {
       <div style="font-size:12px;opacity:.75;margin-top:4px">${esc(BUSINESS_ADDRESS)} · ${esc(BUSINESS_PHONE)}</div>
     </div>
     <div style="background:#fff;border:1px solid #e8e2d6;border-top:0;padding:24px;border-radius:0 0 12px 12px">
-      <p style="margin:0 0 4px;font-size:12px;color:#6b6457;text-transform:uppercase;letter-spacing:1px">Official Receipt</p>
+      <p style="margin:0 0 4px;font-size:12px;color:#6b6457;text-transform:uppercase;letter-spacing:1px">${receiptTitle}</p>
       <p style="margin:0 0 16px;font-size:18px;font-weight:bold">${receiptNo}</p>
       <p style="display:inline-block;margin:0 0 20px;padding:4px 10px;border:2px solid ${statusColor};color:${statusColor};font-size:12px;font-weight:bold;border-radius:6px">${esc(statusLabel)}</p>
       <p style="margin:0 0 16px">Hi ${esc(customerName)}, thank you for your payment. Here is your receipt.</p>
@@ -171,25 +203,30 @@ Deno.serve(async req => {
         ${row('Reference No.', esc(payment.reference_number || '—'))}
         ${row('Date Paid', esc(longDate(payment.paid_at, true)))}
         ${payment.verified_at ? row('Date Verified', esc(longDate(payment.verified_at, true))) : ''}
-        ${row('Amount Paid', peso(Number(payment.amount)), true)}
+        ${row(counted ? 'Amount Received' : 'Amount Submitted', peso(summary.thisAmount), true)}
       </table>
       <hr style="border:0;border-top:1px solid #e8e2d6;margin:16px 0">
+      <p style="margin:0 0 6px;font-size:11px;color:#6b6457;text-transform:uppercase;letter-spacing:1px">Booking balance as of this payment</p>
       <table style="width:100%;border-collapse:collapse;font-size:14px">
-        ${row('Total Contract Amount', peso(contractTotal))}
-        ${row('Total Verified Payments', peso(verifiedTotal))}
-        ${row('Remaining Balance', peso(balance), true)}
+        ${row('Total Contract Value', peso(summary.contractTotal))}
+        ${row('Less: Paid Before This Payment', '− ' + peso(summary.paidBefore))}
+        ${row(counted ? 'Less: This Payment' : `This Payment (${notCounted})`, counted ? '− ' + peso(summary.thisAmount) : peso(0))}
+        ${row(summary.balanceAfter === 0 && summary.contractTotal > 0 ? 'Remaining Balance (Fully Paid)' : 'Remaining Balance', peso(summary.balanceAfter), true)}
+        ${summary.overpaid > 0 ? row('Overpayment (to be refunded or credited)', peso(summary.overpaid)) : ''}
       </table>
+      <p style="margin:8px 0 0;font-size:11px;color:#8a8273">Amounts are as of ${esc(longDate(payment.paid_at))}. Payments made after this date have their own receipts.</p>
       <p style="margin:20px 0 0;font-size:12px;color:#6b6457">This is a system-generated receipt. For questions, reply to this email or call ${esc(BUSINESS_PHONE)}.</p>
     </div>
   </div></body></html>`;
 
   const text = [
-    `${BUSINESS_NAME} — Official Receipt ${receiptNo} (${statusLabel})`,
+    `${BUSINESS_NAME} — ${receiptTitle} ${receiptNo} (${statusLabel})`,
     `Booking: ${reservation.booking_code}`,
     `Event: ${longDate(reservation.event_date)} at ${time12(reservation.event_time)}, ${reservation.venue_address}`,
     `Amount paid: ${peso(Number(payment.amount))} via ${METHOD_LABELS[payment.payment_method] || payment.payment_method}`,
     `Reference: ${payment.reference_number || '—'}`,
-    `Contract total: ${peso(contractTotal)} · Verified: ${peso(verifiedTotal)} · Balance: ${peso(balance)}`,
+    `As of this payment — Contract total: ${peso(summary.contractTotal)} · Paid before: ${peso(summary.paidBefore)} · ` +
+      `This payment: ${peso(summary.thisAmount)}${counted ? '' : ` (${notCounted})`} · Remaining balance: ${peso(summary.balanceAfter)}`,
   ].join('\n');
 
   try {

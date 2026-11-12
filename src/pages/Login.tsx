@@ -183,7 +183,7 @@ export function Login({ portal = 'any' }: { portal?: LoginPortal }) {
         </div>
 
         <div className="text-xs text-cream/60">
-          © {new Date().getFullYear()} Natalie's Catering System. Capstone Defense Demo.
+          © {new Date().getFullYear()} Natalie's Catering System.
         </div>
       </div>
 

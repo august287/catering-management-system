@@ -354,6 +354,15 @@ const MENU_ITEM_IMAGES: Record<number, string> = {
   26: '/images/debut.jpg',
 };
 
+/**
+ * The seeded dishes borrow event photos as stand-ins. True if a dish image is one of
+ * those stand-ins rather than a real photo of the food (e.g. one an admin uploaded).
+ */
+const PLACEHOLDER_MENU_IMAGES = new Set(Object.values(MENU_ITEM_IMAGES));
+export function isPlaceholderMenuImage(url?: string | null): boolean {
+  return !url || PLACEHOLDER_MENU_IMAGES.has(url);
+}
+
 export const INITIAL_MENU_ITEMS: MenuItem[] = MENU_ITEM_SEED.map(item => ({
   ...item,
   image_url: MENU_ITEM_IMAGES[item.id] ?? null,

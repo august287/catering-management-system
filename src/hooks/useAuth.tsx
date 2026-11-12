@@ -27,6 +27,9 @@ interface AuthContextType {
   setOwnDisplayName: (name: string) => void;
 }
 
+export const DUPLICATE_EMAIL_MESSAGE =
+  'An account with this email already exists. Please sign in, or use "Forgot password" if you can\'t remember your password.';
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -206,7 +209,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             emailRedirectTo: `${window.location.origin}/`,
           },
         });
-        if (error) throw error;
+        if (error) {
+          // Email confirmation off: Supabase reports the duplicate directly.
+          if (/already (been )?registered|already exists/i.test(error.message)) {
+            return { success: false, error: DUPLICATE_EMAIL_MESSAGE };
+          }
+          throw error;
+        }
+        // Email confirmation on: to hide which emails exist, Supabase answers a
+        // duplicate sign-up with a placeholder user that has no identities (and
+        // sends nothing). Treat that as "email already registered".
+        if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+          return { success: false, error: DUPLICATE_EMAIL_MESSAGE };
+        }
         if (data.user && data.session) {
           const newProfile: Profile = {
             id: data.user.id,
@@ -235,7 +250,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Demo registration with duplicate check and persistent account recording
       const accounts = mockStore.getAccounts();
       if (accounts.some(a => a.email.toLowerCase() === cleanEmail)) {
-        return { success: false, error: 'An account with this email already exists.' };
+        return { success: false, error: DUPLICATE_EMAIL_MESSAGE };
       }
 
       const newId = 'cust-' + Date.now();

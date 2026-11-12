@@ -87,7 +87,21 @@ export interface Package {
   price_per_pax: number;
   min_pax: number;
   theme_id?: number | null;
+  /**
+   * How many dishes per course the customer chooses, e.g.
+   * { counts: { main: 3, appetizer: 1 }, included: ['Bottomless Iced Tea'] }.
+   * See src/lib/menuCourses.ts. Null = use the tier's built-in default.
+   */
+  menu_rules?: { counts: Record<string, number>; included?: string[] } | null;
   created_at?: string;
+}
+
+/** One dish the customer chose for their event. */
+export interface MenuSelectionItem {
+  course: string;
+  item_id: number;
+  /** Dish name at booking time, kept even if the dish is renamed or removed later. */
+  name: string;
 }
 
 export interface RentalItem {
@@ -119,6 +133,8 @@ export interface Reservation {
   venue_address: string;
   guest_count: number;
   special_requests?: string | null;
+  /** Dishes the customer chose within their package allowance. */
+  menu_selection?: MenuSelectionItem[] | null;
   total_amount: number;
   status: ReservationStatus;
   created_at: string;

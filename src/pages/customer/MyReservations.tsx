@@ -4,6 +4,7 @@ import { Calendar, MapPin, Users, CreditCard, Eye, Plus, CheckCircle, Clock } fr
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { ChosenMenu } from '@/components/ChosenMenu';
 import { Dialog } from '@/components/ui/Dialog';
 import { useAuth } from '@/hooks/useAuth';
 import { useCateringData } from '@/hooks/useCateringData';
@@ -219,7 +220,7 @@ export function MyReservations() {
                 {selectedRes.special_requests && (
                   <div className="pt-2 border-t border-border">
                     <span className="font-semibold text-text-muted block">Special Requests:</span>
-                    <p className="mt-0.5 text-text italic">"{selectedRes.special_requests}"</p>
+                    <p className="mt-0.5 whitespace-pre-line text-text italic">"{selectedRes.special_requests}"</p>
                   </div>
                 )}
               </div>
@@ -234,6 +235,8 @@ export function MyReservations() {
                   <p className="text-text-muted leading-relaxed text-[11px]">{selPkg.description}</p>
                 </div>
               )}
+
+              <ChosenMenu items={selectedRes.menu_selection} />
 
               {selectedRes.rentals && selectedRes.rentals.length > 0 && (
                 <div className="rounded-lg border border-border p-3 space-y-1.5 bg-white">

@@ -21,6 +21,7 @@ import {
 import { fetchAvailability } from '@/hooks/useDateAvailability';
 import { deleteStaffAccount } from '@/lib/staffAccounts';
 import { displayNameError } from '@/lib/staffRules';
+import { menuSelectionText } from '@/lib/menuCourses';
 import {
   EventTheme,
   MenuCategory,
@@ -33,12 +34,15 @@ import {
   Profile,
   ReservationStatus,
   PaymentStatus,
+  MenuSelectionItem,
   UserRole,
   isAdminRole,
   roleChangeError,
 } from '@/types/database';
 
 const DATA_CHANGED_EVENT = 'catering:data-changed';
+const MENU_RULES_MIGRATION_MESSAGE =
+  'Package saved, but its menu allowance was not: run migration 016_menu_customization.sql in Supabase first.';
 export const AUTO_CANCELLED_EVENT = 'catering:auto-cancelled';
 
 /**
@@ -388,7 +392,12 @@ export function useCateringData() {
     setPackages(updated);
     mockStore.savePackages(updated);
     if (isSupabaseConfigured()) {
-      const { data, error } = await supabase.from('packages').insert(pkg).select().single();
+      let { data, error } = await supabase.from('packages').insert(pkg).select().single();
+      if (error && 'menu_rules' in pkg && /menu_rules/.test(error.message || '')) {
+        // Migration 016 not run yet: create the package without its menu allowance.
+        const { menu_rules: _skip, ...rest } = pkg;
+        ({ data, error } = await supabase.from('packages').insert(rest).select().single());
+      }
       if (error) {
         setPackages(prev => {
           const next = prev.filter(p => p.id !== newPkg.id);
@@ -416,7 +425,14 @@ export function useCateringData() {
     setPackages(updated);
     mockStore.savePackages(updated);
     if (isSupabaseConfigured()) {
-      await supabase.from('packages').update(updates).eq('id', id);
+      let { error } = await supabase.from('packages').update(updates).eq('id', id);
+      if (error && 'menu_rules' in updates && /menu_rules/.test(error.message || '')) {
+        // Migration 016 not run yet: save everything else, then say why the allowance didn't save.
+        const { menu_rules: _skip, ...rest } = updates;
+        ({ error } = await supabase.from('packages').update(rest).eq('id', id));
+        if (!error) throw new Error(MENU_RULES_MIGRATION_MESSAGE);
+      }
+      if (error) throw new Error(error.message);
     }
   };
 
@@ -558,6 +574,7 @@ export function useCateringData() {
     special_requests?: string;
     total_amount: number;
     rentals?: { rental_item_id: number; quantity: number; subtotal: number }[];
+    menu_selection?: MenuSelectionItem[];
   }) => {
     if (!isAtLeastOneWeekAhead(data.event_date)) {
       throw new Error(
@@ -598,6 +615,7 @@ export function useCateringData() {
       venue_address: data.venue_address,
       guest_count: data.guest_count,
       special_requests: data.special_requests || '',
+      menu_selection: data.menu_selection?.length ? data.menu_selection : null,
       total_amount: data.total_amount,
       status: 'pending',
       created_at: new Date().toISOString(),
@@ -636,22 +654,36 @@ export function useCateringData() {
       // Let the `set_booking_code` trigger generate a guaranteed-unique code, and
       // let the serial sequence generate `id`. A client-computed code can collide
       // with other customers' rows that RLS hides (see BUG-01 / migration 004).
-      const { data: insertedRes, error: insertErr } = await supabase
+      const row: Record<string, unknown> = {
+        customer_id: data.customer_id,
+        theme_id: data.theme_id,
+        package_id: data.package_id,
+        event_date: data.event_date,
+        event_time: data.event_time,
+        venue_address: data.venue_address,
+        guest_count: data.guest_count,
+        special_requests: data.special_requests,
+        total_amount: data.total_amount,
+        status: 'pending',
+      };
+      const hasMenu = !!data.menu_selection?.length;
+      let { data: insertedRes, error: insertErr } = await supabase
         .from('reservations')
-        .insert({
-          customer_id: data.customer_id,
-          theme_id: data.theme_id,
-          package_id: data.package_id,
-          event_date: data.event_date,
-          event_time: data.event_time,
-          venue_address: data.venue_address,
-          guest_count: data.guest_count,
-          special_requests: data.special_requests,
-          total_amount: data.total_amount,
-          status: 'pending',
-        })
+        .insert(hasMenu ? { ...row, menu_selection: data.menu_selection } : row)
         .select()
         .single();
+
+      // Migration 016 not run yet: the menu_selection column doesn't exist. Save the
+      // booking anyway and keep the chosen menu in the special requests.
+      if (hasMenu && insertErr && /menu_selection/.test(insertErr.message || '')) {
+        const menuText = `Chosen menu:\n${menuSelectionText(data.menu_selection!)}`;
+        const notes = [data.special_requests?.trim(), menuText].filter(Boolean).join('\n\n');
+        ({ data: insertedRes, error: insertErr } = await supabase
+          .from('reservations')
+          .insert({ ...row, special_requests: notes })
+          .select()
+          .single());
+      }
 
       if (insertErr || !insertedRes) {
         setReservations(prev => {
@@ -990,6 +1022,13 @@ export function useCateringData() {
         .eq('id', id)
         .select('id');
       if (updateError) {
+        if (/payments_reference_number_format/.test(updateError.message || '')) {
+          // Old payment saved before the reference format rule; migration 017 fixes this.
+          throw new Error(
+            'This payment was submitted before the current reference-number rules, so the database blocked the update. ' +
+              'Run migration 017_fix_payment_reference_check.sql in Supabase, then try again.'
+          );
+        }
         throw new Error(`Could not update the payment: ${updateError.message}`);
       }
       if (!savedRows || savedRows.length === 0) {
