@@ -118,7 +118,7 @@ Deno.serve(async req => {
   if (!reservation) return json({ error: 'Reservation not found for this payment.' }, 404);
 
   const { data: callerProfile } = await admin.from('profiles').select('role').eq('id', callerId).single();
-  const isAdmin = callerProfile?.role === 'admin';
+  const isAdmin = callerProfile?.role === 'admin' || callerProfile?.role === 'super_admin';
   if (!isAdmin && reservation.customer_id !== callerId) {
     return json({ error: 'You can only email receipts for your own reservations.' }, 403);
   }

@@ -19,6 +19,8 @@ import {
   isDoubleBookingError,
 } from '@/lib/availability';
 import { fetchAvailability } from '@/hooks/useDateAvailability';
+import { deleteStaffAccount } from '@/lib/staffAccounts';
+import { displayNameError } from '@/lib/staffRules';
 import {
   EventTheme,
   MenuCategory,
@@ -31,10 +33,35 @@ import {
   Profile,
   ReservationStatus,
   PaymentStatus,
+  UserRole,
+  isAdminRole,
+  roleChangeError,
 } from '@/types/database';
 
 const DATA_CHANGED_EVENT = 'catering:data-changed';
 export const AUTO_CANCELLED_EVENT = 'catering:auto-cancelled';
+
+/**
+ * Notify every admin and super admin (live site). Uses the notify_admins()
+ * database function from migration 015; if that migration hasn't been run yet,
+ * falls back to the old single-admin insert. Returns the error, if any.
+ */
+async function notifyAllAdmins(
+  fallbackAdminId: string,
+  title: string,
+  message: string
+): Promise<{ message: string } | null> {
+  const { error } = await supabase.rpc('notify_admins', { p_title: title, p_message: message });
+  if (!error) return null;
+  // PGRST202 / 42883: function not found (migration 015 not run yet).
+  if (error.code !== 'PGRST202' && error.code !== '42883') return error;
+  // Insert WITHOUT `.select()`: the customer cannot SELECT an admin-addressed
+  // row under RLS, which would make PostgREST fail/rollback the insert.
+  const { error: insertError } = await supabase
+    .from('notifications')
+    .insert({ user_id: fallbackAdminId, title, message });
+  return insertError;
+}
 
 // Shared across every hook instance so only one auto-cancel runs at a time.
 let resolvingDoubleBookings = false;
@@ -66,7 +93,7 @@ async function resolveDoubleBookings(reservations: Reservation[], profiles: Prof
     mockStore.saveReservations(
       all.map(r => (loserIds.has(r.id) ? { ...r, status: 'cancelled' as ReservationStatus } : r))
     );
-    const adminIds = profiles.filter(p => p.role === 'admin').map(p => p.id);
+    const adminIds = profiles.filter(p => isAdminRole(p.role)).map(p => p.id);
     const now = Date.now();
     const notes: Notification[] = losers.flatMap((r, i) => {
       const when = formatDate(r.event_date);
@@ -103,10 +130,12 @@ export function useCateringData() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>(mockStore.getMenuItems());
   const [packages, setPackages] = useState<Package[]>(mockStore.getPackages());
   const [rentals, setRentals] = useState<RentalItem[]>(mockStore.getRentals());
-  const [reservations, setReservations] = useState<Reservation[]>(mockStore.getReservations());
-  const [payments, setPayments] = useState<Payment[]>(mockStore.getPayments());
+  // On the live site, people and bookings start empty until the database answers,
+  // so demo customers and bookings are never shown in place of real ones.
+  const [reservations, setReservations] = useState<Reservation[]>(supabaseActive ? [] : mockStore.getReservations());
+  const [payments, setPayments] = useState<Payment[]>(supabaseActive ? [] : mockStore.getPayments());
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>(mockStore.getProfiles());
+  const [profiles, setProfiles] = useState<Profile[]>(supabaseActive ? [] : mockStore.getProfiles());
   const [loading, setLoading] = useState<boolean>(false);
 
   // Load from Supabase if configured, otherwise rely on mockStore
@@ -135,7 +164,7 @@ export function useCateringData() {
         { data: res },
         { data: pay },
         { data: notif },
-        { data: prof },
+        { data: prof, error: profErr },
       ] = await Promise.all([
         supabase.from('event_themes').select('*').order('id'),
         supabase.from('menu_categories').select('*').order('display_order'),
@@ -156,18 +185,18 @@ export function useCateringData() {
       if (res) setReservations(res as any);
       if (pay) setPayments(pay as any);
       if (notif) setNotifications(notif);
-      if (prof && prof.length > 0) setProfiles(prof);
+      // Always show what the database returned, even an empty list.
+      if (prof) setProfiles(prof);
+      if (profErr) console.warn('Could not load user profiles:', profErr.message);
     } catch (err) {
-      console.warn('Supabase fetch error, falling back to local data:', err);
+      // Network failure: fall back to the demo menu/themes so pages still render,
+      // but keep the real people and bookings already loaded (never show demo ones).
+      console.warn('Supabase fetch error, falling back to local catalog data:', err);
       setThemes(mockStore.getThemes());
       setCategories(mockStore.getCategories());
       setMenuItems(mockStore.getMenuItems());
       setPackages(mockStore.getPackages());
       setRentals(mockStore.getRentals());
-      setReservations(mockStore.getReservations());
-      setPayments(mockStore.getPayments());
-      setNotifications(mockStore.getNotifications());
-      setProfiles(mockStore.getProfiles());
     } finally {
       setLoading(false);
     }
@@ -439,6 +468,45 @@ export function useCateringData() {
     }
   };
 
+  // --- Staff Account Actions (super admin only; the manage-staff Edge Function enforces this) ---
+  const removeStaffAccount = async (id: string) => {
+    await deleteStaffAccount(id);
+    setProfiles(prev => prev.filter(p => p.id !== id));
+  };
+
+  // --- Display name (super admins rename staff; anyone may rename themselves) ---
+  const updateProfileName = async (id: string, rawName: string) => {
+    const name = rawName.trim().replace(/\s+/g, ' ');
+    const invalid = displayNameError(name);
+    if (invalid) throw new Error(invalid);
+    if (isSupabaseConfigured()) {
+      const { data, error } = await supabase.from('profiles').update({ name }).eq('id', id).select('id');
+      if (error) throw new Error(error.message);
+      if (!data || data.length === 0) throw new Error('You do not have permission to rename this account.');
+    }
+    const updated = profiles.map(p => (p.id === id ? { ...p, name } : p));
+    setProfiles(updated);
+    mockStore.saveProfiles(updated);
+    return name;
+  };
+
+  // --- User Role Actions (super admin only; the database enforces this too) ---
+  const updateProfileRole = async (id: string, role: UserRole) => {
+    const current = profiles.find(p => p.id === id);
+    if (!current) throw new Error('User not found.');
+    const invalid = roleChangeError(current.role, role);
+    if (invalid) throw new Error(invalid);
+    if (isSupabaseConfigured()) {
+      const { data, error } = await supabase.from('profiles').update({ role }).eq('id', id).select('id');
+      if (error) throw new Error(error.message);
+      // RLS hides rows the caller may not change, so no rows back means "not allowed".
+      if (!data || data.length === 0) throw new Error('You do not have permission to change this role.');
+    }
+    const updated = profiles.map(p => (p.id === id ? { ...p, role } : p));
+    setProfiles(updated);
+    mockStore.saveProfiles(updated);
+  };
+
   // --- Rental Item Actions ---
   const addRentalItem = async (rental: Omit<RentalItem, 'id'>) => {
     const newRent: RentalItem = { ...rental, id: Date.now() };
@@ -623,14 +691,11 @@ export function useCateringData() {
         );
       }
 
-      // Insert WITHOUT `.select()`: the acting customer cannot SELECT a row
-      // addressed to the admin under RLS. Requesting representation makes
-      // PostgREST fail/rollback, so the admin would never receive the alert.
-      const { error: notifError } = await supabase.from('notifications').insert({
-        user_id: adminNotif.user_id,
-        title: adminNotif.title,
-        message: `Reservation ${insertedRes.booking_code} placed for ${data.guest_count} pax.`,
-      });
+      const notifError = await notifyAllAdmins(
+        adminNotif.user_id,
+        adminNotif.title,
+        `Reservation ${insertedRes.booking_code} placed for ${data.guest_count} pax.`
+      );
       if (notifError) {
         console.error('Failed to notify admin of new booking:', notifError.message);
       } else {
@@ -886,13 +951,7 @@ export function useCateringData() {
         newPayment.id = insertedPay.id;
       }
 
-      // Insert WITHOUT `.select()`: the customer cannot SELECT an admin-addressed
-      // row under RLS, which would make PostgREST fail/rollback the insert.
-      const { error: notifError } = await supabase.from('notifications').insert({
-        user_id: adminNotif.user_id,
-        title: adminNotif.title,
-        message: adminNotif.message,
-      });
+      const notifError = await notifyAllAdmins(adminNotif.user_id, adminNotif.title, adminNotif.message);
       if (notifError) {
         console.error('Failed to notify admin of payment:', notifError.message);
       } else {
@@ -1075,6 +1134,9 @@ export function useCateringData() {
     deletePackage: withSync(deletePackage),
     addTheme: withSync(addTheme),
     updateTheme: withSync(updateTheme),
+    updateProfileRole: withSync(updateProfileRole),
+    removeStaffAccount: withSync(removeStaffAccount),
+    updateProfileName: withSync(updateProfileName),
     addRentalItem: withSync(addRentalItem),
     updateRentalItem: withSync(updateRentalItem),
     createReservation: withSync(createReservation),

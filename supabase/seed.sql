@@ -9,6 +9,7 @@ create extension if not exists pgcrypto;
 
 -- 1. Demo Auth Users (Supabase auth.users & auth.identities)
 -- Allows login via demo credentials:
+--   superadmin@caterpro.ph / super123   (needs migration 013)
 --   admin@caterpro.ph  / admin123
 --   customer@test.ph   / pass123
 insert into auth.users (
@@ -83,6 +84,20 @@ insert into auth.users (
   now(),
   now(),
   '', '', '', ''
+),
+(
+  '00000000-0000-0000-0000-000000000000',
+  '00000000-0000-0000-0000-000000000005',
+  'authenticated',
+  'authenticated',
+  'superadmin@caterpro.ph',
+  crypt('super123', gen_salt('bf')),
+  now(),
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  '{"name":"Super Admin","role":"super_admin"}'::jsonb,
+  now(),
+  now(),
+  '', '', '', ''
 )
 on conflict (id) do nothing;
 
@@ -127,6 +142,14 @@ insert into auth.identities (
   'email',
   '00000000-0000-0000-0000-000000000004',
   now(), now(), now()
+),
+(
+  '00000000-0000-0000-0000-000000000005',
+  '00000000-0000-0000-0000-000000000005',
+  '{"sub":"00000000-0000-0000-0000-000000000005","email":"superadmin@caterpro.ph"}'::jsonb,
+  'email',
+  '00000000-0000-0000-0000-000000000005',
+  now(), now(), now()
 )
 on conflict (id) do nothing;
 
@@ -136,7 +159,8 @@ values
   ('00000000-0000-0000-0000-000000000001', 'Admin User', '0917-888-0001', 'admin'),
   ('00000000-0000-0000-0000-000000000002', 'Maria Santos', '0918-123-4567', 'customer'),
   ('00000000-0000-0000-0000-000000000003', 'Juan Dela Cruz', '0922-987-6543', 'customer'),
-  ('00000000-0000-0000-0000-000000000004', 'Beatrice Lim', '0917-555-1212', 'customer')
+  ('00000000-0000-0000-0000-000000000004', 'Beatrice Lim', '0917-555-1212', 'customer'),
+  ('00000000-0000-0000-0000-000000000005', 'Super Admin', '0917-888-0000', 'super_admin')
 on conflict (id) do update set
   name = excluded.name,
   phone = excluded.phone,

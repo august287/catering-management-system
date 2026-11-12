@@ -39,6 +39,13 @@ export const INITIAL_PROFILES: Profile[] = [
     role: 'customer',
     created_at: '2026-03-20T00:00:00Z',
   },
+  {
+    id: '00000000-0000-0000-0000-000000000005',
+    name: 'Super Admin',
+    phone: '0917-888-0000',
+    role: 'super_admin',
+    created_at: '2026-01-01T00:00:00Z',
+  },
 ];
 
 export const INITIAL_THEMES: EventTheme[] = [
@@ -57,7 +64,7 @@ export const INITIAL_THEMES: EventTheme[] = [
     tagline: 'Celebrate every milestone in grand style',
     description:
       'Vibrant festive balloons, dynamic balloon arches, customized stage backdrop, themed dessert table, and party favors setup.',
-    image_url: '/images/5.jpg',
+    image_url: '/images/bday-girl.jpg',
     is_active: true,
   },
   {
@@ -926,6 +933,11 @@ export const INITIAL_ACCOUNTS: DemoAccount[] = [
     password: 'pass123',
     profileId: '00000000-0000-0000-0000-000000000004',
   },
+  {
+    email: 'superadmin@caterpro.ph',
+    password: 'super123',
+    profileId: '00000000-0000-0000-0000-000000000005',
+  },
 ];
 
 // Helper to get / set from localStorage with fallback to initial seed
@@ -938,6 +950,23 @@ function getStorage<T>(key: string, initial: T): T {
   }
 }
 
+// Like getStorage, but also adds seed rows that were added after the browser
+// first saved this list (e.g. the super admin account).
+function getStorageWithSeed<T>(key: string, initial: T[], keyOf: (item: T) => string): T[] {
+  const stored = getStorage<T[]>(key, initial);
+  const have = new Set(stored.map(keyOf));
+  // Seed rows that were deleted on purpose stay deleted.
+  const removed = new Set(getStorage<string[]>(`removed_${key}`, []));
+  const missing = initial.filter(item => !have.has(keyOf(item)) && !removed.has(keyOf(item)));
+  return missing.length ? [...stored, ...missing] : stored;
+}
+
+/** Remembers deleted seed rows so getStorageWithSeed doesn't add them back. */
+function markRemoved(key: string, ids: string[]): void {
+  const removed = getStorage<string[]>(`removed_${key}`, []);
+  setStorage(`removed_${key}`, Array.from(new Set([...removed, ...ids])));
+}
+
 function setStorage<T>(key: string, value: T): void {
   try {
     localStorage.setItem(`caterpro_${key}`, JSON.stringify(value));
@@ -947,7 +976,7 @@ function setStorage<T>(key: string, value: T): void {
 }
 
 export const mockStore = {
-  getProfiles: () => getStorage('profiles', INITIAL_PROFILES),
+  getProfiles: () => getStorageWithSeed('profiles', INITIAL_PROFILES, p => p.id),
   getThemes: () => getStorage('themes', INITIAL_THEMES),
   getCategories: () => getStorage('categories', INITIAL_CATEGORIES),
   getMenuItems: () => getStorage('menu_items', INITIAL_MENU_ITEMS),
@@ -956,7 +985,7 @@ export const mockStore = {
   getReservations: () => getStorage('reservations', INITIAL_RESERVATIONS),
   getPayments: () => getStorage('payments', INITIAL_PAYMENTS),
   getNotifications: () => getStorage('notifications', INITIAL_NOTIFICATIONS),
-  getAccounts: () => getStorage('accounts', INITIAL_ACCOUNTS),
+  getAccounts: () => getStorageWithSeed('accounts', INITIAL_ACCOUNTS, a => a.email.toLowerCase()),
 
   saveReservations: (items: Reservation[]) => setStorage('reservations', items),
   savePayments: (items: Payment[]) => setStorage('payments', items),
@@ -967,4 +996,20 @@ export const mockStore = {
   saveNotifications: (items: Notification[]) => setStorage('notifications', items),
   saveProfiles: (items: Profile[]) => setStorage('profiles', items),
   saveAccounts: (items: DemoAccount[]) => setStorage('accounts', items),
+
+  /** Deletes a user's login and profile from the demo store, for good. */
+  deleteUser: (profileId: string) => {
+    const accounts = getStorageWithSeed('accounts', INITIAL_ACCOUNTS, a => a.email.toLowerCase());
+    markRemoved(
+      'accounts',
+      accounts.filter(a => a.profileId === profileId).map(a => a.email.toLowerCase())
+    );
+    markRemoved('profiles', [profileId]);
+    setStorage('accounts', accounts.filter(a => a.profileId !== profileId));
+    setStorage('profiles', getStorageWithSeed('profiles', INITIAL_PROFILES, p => p.id).filter(p => p.id !== profileId));
+    setStorage(
+      'notifications',
+      getStorage('notifications', INITIAL_NOTIFICATIONS).filter(n => n.user_id !== profileId)
+    );
+  },
 };

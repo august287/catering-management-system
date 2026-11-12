@@ -15,6 +15,7 @@ import { Pagination } from '@/components/ui/Pagination';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatCurrency, MIN_GUEST_COUNT, MAX_GUEST_COUNT } from '@/lib/utils';
 import { MenuItem, Package, EventTheme, RentalItem } from '@/types/database';
+import { getThemeImage } from '@/lib/themeImages';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { useToast } from '@/components/ui/Toast';
 
@@ -546,7 +547,7 @@ export function MenuManagement() {
                         Associated Theme: <span className="font-semibold text-text">{th.name}</span>
                       </p>
                     )}
-                    <p className="mt-3 text-xs text-text-muted leading-relaxed">
+                    <p className="mt-3 text-sm text-text-muted leading-relaxed">
                       {pkg.description}
                     </p>
                   </div>
@@ -581,7 +582,7 @@ export function MenuManagement() {
               <Card key={theme.id} className="overflow-hidden">
                 <div
                   className="h-44 w-full bg-cover bg-center"
-                  style={{ backgroundImage: `url(${theme.image_url})` }}
+                  style={{ backgroundImage: `url("${getThemeImage(theme)}")` }}
                 />
                 <div className="p-5">
                   <div className="flex items-center justify-between">

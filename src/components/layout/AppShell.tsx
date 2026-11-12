@@ -15,6 +15,7 @@ const PAGE_TITLES: [prefix: string, title: string][] = [
   ['/admin/payments', 'Payments'],
   ['/admin/notifications', 'Notifications'],
   ['/admin/reports', 'Reports & Analytics'],
+  ['/admin/users', 'User Management'],
   ['/customer/menu/', 'Theme Details'],
   ['/customer/menu', 'Browse Menu'],
   ['/customer/availability', 'Check Availability'],

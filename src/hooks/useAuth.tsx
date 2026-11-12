@@ -24,6 +24,7 @@ interface AuthContextType {
   requestPasswordReset: (email: string) => Promise<{ success: boolean; demoReset?: boolean; error?: string }>;
   updatePassword: (newPassword: string, demoEmail?: string) => Promise<{ success: boolean; error?: string }>;
   verifyResetCode: (email: string, code: string) => Promise<{ success: boolean; error?: string }>;
+  setOwnDisplayName: (name: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -69,7 +70,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setProfile(prof as Profile);
               setRole(prof.role as UserRole);
             } else if (mounted) {
-              const safeRole: UserRole = session.user.email?.toLowerCase() === 'admin@caterpro.ph' ? 'admin' : 'customer';
+              const safeRole: UserRole = 'customer'; // never guess admin without a profile row
               const metaName = session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User';
               setProfile({ id: session.user.id, name: metaName, role: safeRole });
               setRole(safeRole);
@@ -77,27 +78,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } catch (err) {
             console.warn('Profile fetch failed:', err);
             if (mounted) {
-              const safeRole: UserRole = session.user.email?.toLowerCase() === 'admin@caterpro.ph' ? 'admin' : 'customer';
+              const safeRole: UserRole = 'customer'; // never guess admin without a profile row
               const metaName = session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User';
               setProfile({ id: session.user.id, name: metaName, role: safeRole });
               setRole(safeRole);
             }
           }
         } else {
-          // Check local stored session for demo mode fallback
-          const stored = localStorage.getItem('caterpro_demo_session');
-          if (stored) {
-            try {
-              const parsed = JSON.parse(stored);
-              if (parsed?.user && parsed?.profile) {
-                setUser(parsed.user);
-                setProfile(parsed.profile);
-                setRole(parsed.profile.role);
-                if (mounted) setLoading(false);
-                return;
-              }
-            } catch {}
-          }
+          // Live site: an offline demo session must never sign anyone in. Clear any
+          // left over from demo mode so it can't show fake data.
+          localStorage.removeItem('caterpro_demo_session');
           setUser(null);
           setProfile(null);
           setRole(null);
@@ -132,31 +122,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const cleanEmail = email.trim().toLowerCase();
       if (isSupabaseConfigured()) {
-        try {
-          const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-          if (error) throw error;
-          if (data.user) {
-            const { data: prof } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', data.user.id)
-              .single();
-
-            const safeRole: UserRole = (prof?.role as UserRole) || (cleanEmail === 'admin@caterpro.ph' ? 'admin' : 'customer');
-            const userProfile = (prof as Profile) || {
-              id: data.user.id,
-              name: data.user.user_metadata?.name || 'User',
-              role: safeRole,
-            };
-
-            setUser({ id: data.user.id, email: data.user.email || email });
-            setProfile(userProfile);
-            setRole(safeRole);
-            return { success: true, role: safeRole };
-          }
-        } catch (sbErr: any) {
-          console.warn('Supabase auth attempt failed, checking demo store:', sbErr.message);
+        // Live site: only real Supabase accounts can sign in. Never fall back to the
+        // offline demo accounts here, or demo passwords would open a fake session.
+        const { data, error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+        if (error || !data.user) {
+          const msg = error?.message || '';
+          return {
+            success: false,
+            error: /confirm/i.test(msg)
+              ? 'Please confirm your email address before signing in.'
+              : 'Incorrect email or password. Please try again.',
+          };
         }
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', data.user.id)
+          .single();
+
+        // Without a profile row, treat the account as a customer (never guess admin).
+        const safeRole: UserRole = (prof?.role as UserRole) || 'customer';
+        const userProfile = (prof as Profile) || {
+          id: data.user.id,
+          name: data.user.user_metadata?.name || 'User',
+          role: safeRole,
+        };
+
+        setUser({ id: data.user.id, email: data.user.email || cleanEmail });
+        setProfile(userProfile);
+        setRole(safeRole);
+        return { success: true, role: safeRole };
       }
 
       // Demo Auth Mode: verify credentials against persistent accounts store
@@ -351,6 +346,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRole(null);
   };
 
+  // Updates the signed-in user's display name on screen after it was saved
+  // (the database write happens in useCateringData.updateProfileName).
+  const setOwnDisplayName = (name: string) => {
+    setProfile(prev => {
+      if (!prev) return prev;
+      const next = { ...prev, name };
+      if (!isSupabaseConfigured() && user) {
+        localStorage.setItem('caterpro_demo_session', JSON.stringify({ user, profile: next }));
+      }
+      return next;
+    });
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -364,6 +372,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         requestPasswordReset,
         updatePassword,
         verifyResetCode,
+        setOwnDisplayName,
       }}
     >
       {children}

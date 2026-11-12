@@ -1,4 +1,27 @@
-export type UserRole = 'admin' | 'customer';
+export type UserRole = 'super_admin' | 'admin' | 'customer';
+
+/** True for any role that can use the admin portal. */
+export const isAdminRole = (role?: string | null): boolean =>
+  role === 'admin' || role === 'super_admin';
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  super_admin: 'Super Admin',
+  admin: 'Admin',
+  customer: 'Customer',
+};
+
+export const CUSTOMER_PROMOTION_ERROR = 'Customer accounts cannot be promoted to Admin or Super Admin.';
+
+/**
+ * Returns why a role change isn't allowed, or null if it is.
+ * Customers can never become staff (admin or super admin) from the app.
+ * Keep in sync with prevent_profile_role_change() in the database.
+ */
+export function roleChangeError(from: UserRole, to: UserRole): string | null {
+  if (from === to) return null;
+  if (from === 'customer' && isAdminRole(to)) return CUSTOMER_PROMOTION_ERROR;
+  return null;
+}
 
 export type ReservationStatus =
   | 'pending'

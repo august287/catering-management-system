@@ -27,10 +27,11 @@ npm run build
 
 ---
 
-## Demo Accounts (One-Click Auto-fill on Sign In)
+## Demo Accounts
 
 | Role | Email | Password | Access / Portal |
 |------|-------|----------|-----------------|
+| **Super Admin** | `superadmin@caterpro.ph` | `super123` | Everything an administrator has, plus User Management (change user roles). Needs migration `013_super_admin_role.sql` on Supabase. |
 | **Administrator** | `admin@caterpro.ph` | `admin123` | KPI Dashboard, Menu Management, Reservations, Customers, Payment Verifications, Reports |
 | **Customer** | `customer@test.ph` | `pass123` | Browse Menu & Themes, Multi-Step Booking Wizard, My Reservations, Proof of Payment Uploads |
 
@@ -81,6 +82,12 @@ Receipts are emailed to the customer automatically when an admin verifies a paym
 
 ### 4. Realtime
 Migrations 011 and 012 add `reservations` and `payments` to the `supabase_realtime` publication, so calendars and lists update live without a page refresh.
+
+### 5. Super admin and staff accounts
+1. Run `supabase/migrations/013_super_admin_role.sql`, then `014_block_customer_promotion.sql`, then `015_notify_all_admins.sql`, in the SQL Editor. Migration 015 sends booking and payment alerts to every admin and super admin instead of only the demo admin account.
+2. Deploy `supabase/functions/manage-staff/index.ts` as an Edge Function named **`manage-staff`** (dashboard: Edge Functions → Deploy a new function, paste the code). It lets super admins delete staff accounts and set staff passwords from **User Management**. No extra secrets are needed. If you use another name, change `MANAGE_STAFF_FUNCTION_NAME` in `src/lib/staffAccounts.ts`.
+3. Redeploy `swift-api` with the updated `send-receipt` code so super admins can email receipts too.
+4. Customers can't be promoted to staff from the app. To create a staff account, have the person register, then run `update public.profiles set role = 'admin' where id = '<user uuid>';` in the SQL Editor.
 
 ---
 

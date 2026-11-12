@@ -102,9 +102,66 @@ async function runTests() {
     const mockData = await loadTsModule('./src/lib/mockData.ts');
 
     // Profiles
-    assert.strictEqual(mockData.INITIAL_PROFILES.length, 4, 'Must have 4 seed profiles');
+    assert.strictEqual(mockData.INITIAL_PROFILES.length, 5, 'Must have 5 seed profiles');
     const adminProf = mockData.INITIAL_PROFILES.find(p => p.role === 'admin');
     assert.ok(adminProf, 'Must contain an admin profile');
+    const superProf = mockData.INITIAL_PROFILES.find(p => p.role === 'super_admin');
+    assert.ok(superProf, 'Must contain a super admin profile');
+    assert.ok(
+      mockData.INITIAL_ACCOUNTS.some(a => a.email === 'superadmin@caterpro.ph' && a.profileId === superProf.id),
+      'Super admin demo account must point at the super admin profile'
+    );
+
+    // Role changes: customers can never be promoted to staff
+    const db = await loadTsModule('./src/types/database.ts');
+    assert.ok(db.roleChangeError('customer', 'admin'), 'Customer -> Admin must be blocked');
+    assert.ok(db.roleChangeError('customer', 'super_admin'), 'Customer -> Super Admin must be blocked');
+    assert.strictEqual(db.roleChangeError('admin', 'super_admin'), null, 'Admin -> Super Admin must be allowed');
+    assert.strictEqual(db.roleChangeError('super_admin', 'admin'), null, 'Super Admin -> Admin must be allowed');
+    assert.strictEqual(db.roleChangeError('admin', 'customer'), null, 'Admin -> Customer must be allowed');
+    const promoSql = fs.readFileSync('supabase/migrations/014_block_customer_promotion.sql', 'utf8');
+    assert.ok(
+      /old\.role = 'customer' and new\.role in \('admin', 'super_admin'\)/.test(promoSql),
+      'Database must also block customer promotion'
+    );
+
+    // Staff account management: only super admins, only staff targets, never yourself
+    const staff = await loadTsModule('./src/lib/staffRules.ts');
+    const sa = { id: 'sa', role: 'super_admin' };
+    assert.strictEqual(staff.staffActionError(sa, { id: 'a1', role: 'admin' }), null, 'Super admin may manage an admin');
+    assert.strictEqual(staff.staffActionError(sa, { id: 'sa2', role: 'super_admin' }), null, 'Super admin may manage another super admin');
+    assert.ok(staff.staffActionError(sa, { id: 'c1', role: 'customer' }), 'Customers must not be managed here');
+    assert.ok(staff.staffActionError(sa, sa), 'Super admin must not manage their own account');
+    assert.ok(staff.staffActionError({ id: 'a1', role: 'admin' }, { id: 'a2', role: 'admin' }), 'Admins must not manage accounts');
+    assert.ok(staff.STRONG_PASSWORD.test('Natalie#2026'), 'Strong password must pass');
+    assert.ok(!staff.STRONG_PASSWORD.test('admin123'), 'Weak password must fail');
+    // Display names
+    assert.strictEqual(staff.displayNameError('Natalie Santos'), null, 'Normal name must be accepted');
+    assert.ok(staff.displayNameError(' A '), 'One-letter name must be rejected');
+    assert.ok(staff.displayNameError('x'.repeat(61)), 'Overlong name must be rejected');
+    assert.ok(staff.displayNameError('<script>'), 'Name with < > must be rejected');
+    assert.ok(staff.canRename(sa, sa), 'Super admin may rename themselves');
+    assert.ok(staff.canRename(sa, { id: 'a1', role: 'admin' }), 'Super admin may rename staff');
+    assert.ok(!staff.canRename(sa, { id: 'c1', role: 'customer' }), 'Super admin must not rename customers here');
+    assert.ok(!staff.canRename({ id: 'a1', role: 'admin' }, { id: 'a1', role: 'admin' }), 'Admins use no rename button here');
+    const fnSrc = fs.readFileSync('supabase/functions/manage-staff/index.ts', 'utf8');
+    assert.ok(fnSrc.includes("caller?.role !== 'super_admin'"), 'Edge Function must require a super admin');
+    assert.ok(fnSrc.includes('targetId === callerId'), 'Edge Function must refuse the caller\'s own account');
+    assert.ok(fnSrc.includes('STAFF_ROLES.includes(target.role)'), 'Edge Function must only touch staff accounts');
+
+    // Theme & package pictures resolve by name to files that exist
+    const themeImages = await loadTsModule('./src/lib/themeImages.ts');
+    const imageExists = src => fs.existsSync(path.join('public', src.replace(/^\//, '')));
+    for (const theme of mockData.INITIAL_THEMES) {
+      const gallery = themeImages.getThemeImages(theme);
+      assert.ok(gallery.length > 0, `Theme ${theme.name} must have pictures`);
+      for (const src of gallery) assert.ok(imageExists(src), `Picture ${src} for ${theme.name} not found`);
+      const slug = themeImages.slugify(theme.name);
+      assert.strictEqual(themeImages.findThemeBySlug(mockData.INITIAL_THEMES, slug)?.id, theme.id, `Route /${slug} must open ${theme.name}`);
+      assert.strictEqual(themeImages.findThemeBySlug(mockData.INITIAL_THEMES, String(theme.id))?.id, theme.id, 'Old numeric theme links must still work');
+    }
+    assert.strictEqual(themeImages.slugify('Christening & Dedication'), 'christening-dedication');
+    assert.strictEqual(themeImages.getPackageImage, undefined, 'Packages no longer have pictures');
 
     // Accounts
     assert.ok(Array.isArray(mockData.INITIAL_ACCOUNTS), 'INITIAL_ACCOUNTS must be an array');

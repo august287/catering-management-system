@@ -3,6 +3,7 @@ import { Menu, Bell, User } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useCateringData } from '@/hooks/useCateringData';
 import { Link } from 'react-router-dom';
+import { isAdminRole, ROLE_LABELS } from '@/types/database';
 
 interface TopbarProps {
   title?: string;
@@ -15,11 +16,12 @@ export function Topbar({ title = "Natalie's Catering", sidebarOpen = false, onTo
   const { notifications } = useCateringData();
 
   const unreadCount = notifications.filter(
-    n => !n.is_read && (role === 'admin' ? (n.user_id === profile?.id || n.user_id === '00000000-0000-0000-0000-000000000001') : (profile?.id ? n.user_id === profile.id : false))
+    n => !n.is_read && (isAdminRole(role) ? (n.user_id === profile?.id || n.user_id === '00000000-0000-0000-0000-000000000001') : (profile?.id ? n.user_id === profile.id : false))
   ).length;
 
-  const notifLink = role === 'admin' ? '/admin/notifications' : '/customer/notifications';
-  const portalLabel = role === 'admin' ? 'Admin Portal' : 'Customer Portal';
+  const notifLink = isAdminRole(role) ? '/admin/notifications' : '/customer/notifications';
+  const portalLabel =
+    role === 'super_admin' ? 'Super Admin Portal' : role === 'admin' ? 'Admin Portal' : 'Customer Portal';
 
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full shrink-0 items-center justify-between gap-3 border-b border-border bg-white/95 px-4 backdrop-blur sm:px-6">
@@ -75,7 +77,7 @@ export function Topbar({ title = "Natalie's Catering", sidebarOpen = false, onTo
           </div>
           <div className="hidden max-w-[10rem] text-left text-xs sm:block">
             <span className="block truncate font-medium text-ink leading-tight">{profile?.name || 'User'}</span>
-            <span className="block text-[10px] text-text-muted capitalize">{role}</span>
+            <span className="block text-[10px] text-text-muted">{role ? ROLE_LABELS[role] : ''}</span>
           </div>
         </div>
       </div>

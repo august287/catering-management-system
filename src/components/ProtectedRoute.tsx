@@ -1,11 +1,17 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { UserRole } from '@/types/database';
+import { UserRole, isAdminRole } from '@/types/database';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  allowedRole?: UserRole;
+  /** A single role or a list of roles allowed to view this route. */
+  allowedRole?: UserRole | UserRole[];
+}
+
+/** Home page for each role. */
+export function homeForRole(role: UserRole | null | undefined): string {
+  return isAdminRole(role) ? '/admin/dashboard' : '/customer/menu';
 }
 
 export function ProtectedRoute({ children, allowedRole }: ProtectedRouteProps) {
@@ -27,9 +33,10 @@ export function ProtectedRoute({ children, allowedRole }: ProtectedRouteProps) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (allowedRole && role && role !== allowedRole) {
+  const allowed = allowedRole === undefined ? null : Array.isArray(allowedRole) ? allowedRole : [allowedRole];
+  if (allowed && role && !allowed.includes(role)) {
     // Redirect to proper role portal
-    const destination = role === 'admin' ? '/admin/dashboard' : '/customer/menu';
+    const destination = homeForRole(role);
     if (location.pathname !== destination) {
       return <Navigate to={destination} replace />;
     }

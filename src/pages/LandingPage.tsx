@@ -15,6 +15,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import logo from '/public/images/natalielogo.jpg';
+import { getThemeImage } from '@/lib/themeImages';
 
 const services = [
   {
@@ -202,7 +203,7 @@ export function LandingPage() {
               >
                 <div
                   className="relative h-48 w-full bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
-                  style={{ backgroundImage: `url(${svc.image})` }}
+                  style={{ backgroundImage: `url("${getThemeImage({ name: svc.title, image_url: svc.image })}")` }}
                 >
                   <div className="absolute inset-0 bg-gradient-to-t from-ink/80 via-ink/20 to-transparent" />
                   <div className="absolute bottom-3 left-4 right-4">
@@ -255,8 +256,8 @@ export function LandingPage() {
                 </div>
                 <ul className="mt-6 flex-1 space-y-2.5">
                   {pkg.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2 text-xs leading-relaxed text-cream/75">
-                      <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold" />
+                    <li key={f} className="flex items-start gap-2 text-sm leading-relaxed text-cream/75">
+                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-gold" />
                       {f}
                     </li>
                   ))}

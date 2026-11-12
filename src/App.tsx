@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '@/hooks/useAuth';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { isAdminRole } from '@/types/database';
 import AppShell from '@/components/layout/AppShell';
 import { ToastProvider } from '@/components/ui/Toast';
 
@@ -21,6 +22,7 @@ import AdminPayments from '@/pages/admin/Payments';
 import AdminNotifications from '@/pages/admin/Notifications';
 import AdminReports from '@/pages/admin/Reports';
 import AdminEventCalendar from '@/pages/admin/EventCalendar';
+import AdminUserManagement from '@/pages/admin/UserManagement';
 
 // Customer Pages
 import CustomerBrowseMenu from '@/pages/customer/BrowseMenu';
@@ -35,7 +37,7 @@ import { useAuth } from '@/hooks/useAuth';
 function LandingOrRedirect() {
   const { role, loading } = useAuth();
   if (loading) return null;
-  if (role === 'admin') return <Navigate to="/admin/dashboard" replace />;
+  if (isAdminRole(role)) return <Navigate to="/admin/dashboard" replace />;
   if (role === 'customer') return <Navigate to="/customer/menu" replace />;
   return <LandingPage />;
 }
@@ -48,6 +50,8 @@ export function App() {
         <Routes>
           {/* Public Authentication Routes */}
           <Route path="/login" element={<Login />} />
+          <Route path="/login/admin" element={<Login portal="admin" />} />
+          <Route path="/login/superadmin" element={<Login portal="super_admin" />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
@@ -59,7 +63,7 @@ export function App() {
           <Route
             path="/admin"
             element={
-              <ProtectedRoute allowedRole="admin">
+              <ProtectedRoute allowedRole={['admin', 'super_admin']}>
                 <AppShell />
               </ProtectedRoute>
             }
@@ -73,6 +77,14 @@ export function App() {
             <Route path="payments" element={<AdminPayments />} />
             <Route path="notifications" element={<AdminNotifications />} />
             <Route path="reports" element={<AdminReports />} />
+            <Route
+              path="users"
+              element={
+                <ProtectedRoute allowedRole="super_admin">
+                  <AdminUserManagement />
+                </ProtectedRoute>
+              }
+            />
           </Route>
 
           {/* Customer Protected Subsystem */}
@@ -86,7 +98,7 @@ export function App() {
           >
             <Route index element={<Navigate to="/customer/menu" replace />} />
             <Route path="menu" element={<CustomerBrowseMenu />} />
-            <Route path="menu/:themeId" element={<CustomerThemeDetail />} />
+            <Route path="menu/:themeSlug" element={<CustomerThemeDetail />} />
             <Route path="availability" element={<CustomerAvailability />} />
             <Route path="book" element={<CustomerBookReservation />} />
             <Route path="reservations" element={<CustomerMyReservations />} />

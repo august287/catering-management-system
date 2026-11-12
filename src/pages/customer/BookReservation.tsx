@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/Badge';
 import { ConfirmationModal } from '@/components/ui/Modal';
 import { Dialog } from '@/components/ui/Dialog';
 import { ReservationCalendar } from '@/components/ReservationCalendar';
+import { getThemeImage } from '@/lib/themeImages';
 import { fetchAvailability } from '@/hooks/useDateAvailability';
 import { DOUBLE_BOOKING_MESSAGE, isDateFullyBooked } from '@/lib/availability';
 import { useAuth } from '@/hooks/useAuth';
@@ -351,12 +352,18 @@ export function BookReservation() {
                       key={t.id}
                       onClick={() => setThemeId(t.id)}
                       aria-pressed={themeId === t.id}
-                      className={`cursor-pointer rounded-lg border p-3 text-left transition-all ${
+                      className={`cursor-pointer overflow-hidden rounded-lg border p-3 text-left transition-all ${
                         themeId === t.id
                           ? 'border-gold bg-gold-light/40 shadow-sm ring-1 ring-gold'
                           : 'border-border bg-white hover:border-text-muted'
                       }`}
                     >
+                      <img
+                        src={getThemeImage(t)}
+                        alt=""
+                        className="-mx-3 -mt-3 mb-2.5 h-20 w-[calc(100%+1.5rem)] max-w-none object-cover"
+                        loading="lazy"
+                      />
                       <h4 className="font-serif text-sm font-bold text-ink">{t.name}</h4>
                       <p className="mt-1 text-[11px] text-text-muted line-clamp-1">{t.tagline}</p>
                     </button>
@@ -393,7 +400,7 @@ export function BookReservation() {
                           {formatCurrency(pkg.price_per_pax)}
                           <span className="text-xs font-sans font-normal text-text-muted"> / head</span>
                         </div>
-                        <p className="mt-3 text-xs text-text-muted leading-relaxed">
+                        <p className="mt-3 text-sm text-text-muted leading-relaxed">
                           {pkg.description}
                         </p>
                       </div>
