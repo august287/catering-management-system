@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -15,6 +15,48 @@ import {
   Sparkles,
 } from 'lucide-react';
 import logo from '/public/images/natalielogo.jpg';
+import { getThemeImage } from '@/lib/themeImages';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { mockStore } from '@/lib/mockData';
+import { getPackageMenuRules, offeredCourses } from '@/lib/menuCourses';
+import { formatCurrency, MIN_GUEST_COUNT, MAX_GUEST_COUNT } from '@/lib/utils';
+import type { Package } from '@/types/database';
+
+/** The same packages customers book from inside the system, cheapest first. */
+function usePublicPackages(): { packages: Package[]; loading: boolean } {
+  const [packages, setPackages] = useState<Package[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    const byPrice = (list: Package[]) => [...list].sort((a, b) => a.price_per_pax - b.price_per_pax);
+    (async () => {
+      let list: Package[] = mockStore.getPackages();
+      if (isSupabaseConfigured()) {
+        const { data, error } = await supabase.from('packages').select('*');
+        if (!error && data) list = data as Package[];
+        else console.warn('Could not load packages for the landing page:', error?.message);
+      }
+      if (alive) {
+        setPackages(byPrice(list));
+        setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return { packages, loading };
+}
+
+/** "3 Main courses", "1 Dessert", ... bullets from a package's menu allowance. */
+function packageHighlights(pkg: Package): string[] {
+  const rules = getPackageMenuRules(pkg);
+  const courses = offeredCourses(rules).map(c => {
+    const word = c.count === 1 ? c.one : c.many;
+    return `${c.count} ${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+  });
+  return [...courses, ...(rules.included || [])];
+}
 
 const services = [
   {
@@ -61,50 +103,13 @@ const services = [
   },
 ];
 
-const packages = [
-  {
-    name: 'Package A',
-    price: '₱350',
-    per: '/ head',
-    features: [
-      '3 Main Courses (any courses you want)',
-      '1 Appetizer, Rice, 1 Dessert',
-      'Bottomless Iced Tea',
-      'Themed setup with centerpiece on all guest tables',
-    ],
-  },
-  {
-    name: 'Package B',
-    price: '₱380',
-    per: '/ head',
-    features: [
-      '3 Main Courses (any courses you want)',
-      '2 Appetizers, 1 Noodles, Rice',
-      '2 Desserts',
-      'Bottomless Specialty Cooler',
-      'Themed setup with centerpiece on all guest tables',
-    ],
-  },
-  {
-    name: 'Package C',
-    price: '₱400',
-    per: '/ head',
-    features: [
-      '4 Main Courses (any courses you want)',
-      '2 Appetizers, 2 Noodles, Rice',
-      '2 Desserts',
-      'Bottomless Specialty Cooler',
-      'Themed setup with centerpiece on all guest tables',
-    ],
-  },
-];
-
 const locations = [
   'Cabuyao City, Laguna',
   'Santa Rosa City, Laguna',
 ];
 
 export function LandingPage() {
+  const { packages, loading: packagesLoading } = usePublicPackages();
   return (
     <div className="min-h-screen bg-cream">
       {/* ─── Sticky Navbar ─── */}
@@ -201,7 +206,7 @@ export function LandingPage() {
               >
                 <div
                   className="relative h-48 w-full bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
-                  style={{ backgroundImage: `url(${svc.image})` }}
+                  style={{ backgroundImage: `url("${getThemeImage({ name: svc.title, image_url: svc.image })}")` }}
                 >
                   <div className="absolute inset-0 bg-gradient-to-t from-ink/80 via-ink/20 to-transparent" />
                   <div className="absolute bottom-3 left-4 right-4">
@@ -230,48 +235,62 @@ export function LandingPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            {packages.map((pkg, idx) => (
-              <div
-                key={pkg.name}
-                className={`relative flex flex-col rounded-xl border p-6 sm:p-8 transition-all duration-300 hover:shadow-pop ${
-                  idx === 1
-                    ? 'border-gold/50 bg-white/[0.07] shadow-pop'
-                    : 'border-white/10 bg-white/[0.04]'
-                }`}
-              >
-                {idx === 1 && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gold px-4 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
-                    Most Popular
-                  </span>
-                )}
-                <div>
-                  <h3 className="font-serif text-lg font-bold text-white">{pkg.name}</h3>
-                  <div className="mt-3 flex items-baseline gap-1">
-                    <span className="font-serif text-3xl font-bold text-gold-light">{pkg.price}</span>
-                    <span className="text-xs text-cream/50">{pkg.per}</span>
-                  </div>
-                </div>
-                <ul className="mt-6 flex-1 space-y-2.5">
-                  {pkg.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2 text-xs leading-relaxed text-cream/75">
-                      <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold" />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                <Link to="/register" className="mt-8">
-                  <Button
-                    variant={idx === 1 ? 'gold' : 'outline'}
-                    size="sm"
-                    className="w-full text-xs gap-1 hover:bg-ink hover:text-white hover:border-ink"
+          {packagesLoading ? (
+            <p className="text-center text-sm text-cream/60" aria-live="polite">
+              Loading packages…
+            </p>
+          ) : packages.length === 0 ? (
+            <p className="text-center text-sm text-cream/60">
+              Packages will be listed here soon. Contact us for a custom quote.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {packages.map(pkg => {
+                const minPax = Math.min(MAX_GUEST_COUNT, Math.max(MIN_GUEST_COUNT, pkg.min_pax));
+                return (
+                  <div
+                    key={pkg.id}
+                    className="relative flex flex-col rounded-xl border border-white/10 bg-white/[0.04] p-6 transition-all duration-300 hover:border-gold/50 hover:bg-white/[0.07] hover:shadow-pop sm:p-8"
                   >
-                    Book Package <ArrowRight className="h-3.5 w-3.5" />
-                  </Button>
-                </Link>
-              </div>
-            ))}
-          </div>
+                    <div>
+                      <h3 className="font-serif text-lg font-bold text-white">{pkg.name}</h3>
+                      <div className="mt-3 flex items-baseline gap-1">
+                        <span className="font-serif text-3xl font-bold text-gold-light">
+                          {formatCurrency(pkg.price_per_pax)}
+                        </span>
+                        <span className="text-xs text-cream/50">/ pax</span>
+                      </div>
+                      <p className="mt-1 text-xs text-cream/50">
+                        For {minPax}–{MAX_GUEST_COUNT} guests
+                      </p>
+                    </div>
+                    <ul className="mt-6 space-y-2.5">
+                      {packageHighlights(pkg).map(f => (
+                        <li key={f} className="flex items-start gap-2 text-sm leading-relaxed text-cream/75">
+                          <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-gold" />
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                    {pkg.description && (
+                      <p className="mt-4 flex-1 border-t border-white/10 pt-4 text-sm leading-relaxed text-cream/60">
+                        {pkg.description}
+                      </p>
+                    )}
+                    <Link to="/register" className="mt-8">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs gap-1 hover:bg-ink hover:text-white hover:border-ink"
+                      >
+                        Book Package <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
+                    </Link>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 
@@ -341,8 +360,9 @@ export function LandingPage() {
                 <Phone className="h-5 w-5 text-gold" />
               </div>
               <h4 className="mt-4 font-serif text-sm font-bold text-ink">Phone</h4>
-              <p className="mt-1 text-xs text-text-muted">+63 917 888 0001</p>
-              <p className="text-xs text-text-muted">+63 918 123 4567</p>
+              <a href="tel:+639198104712" className="mt-1 text-xs text-text-muted hover:text-gold-dark hover:underline">
+                0919 810 4712
+              </a>
             </Card>
 
             {/* Email */}
@@ -351,8 +371,12 @@ export function LandingPage() {
                 <Mail className="h-5 w-5 text-gold" />
               </div>
               <h4 className="mt-4 font-serif text-sm font-bold text-ink">Email</h4>
-              <p className="mt-1 text-xs text-text-muted">hello@nataliescatering.ph</p>
-              <p className="text-xs text-text-muted">bookings@nataliescatering.ph</p>
+              <a
+                href="mailto:nathalies.catering15@gmail.com"
+                className="mt-1 break-all text-xs text-text-muted hover:text-gold-dark hover:underline"
+              >
+                nathalies.catering15@gmail.com
+              </a>
             </Card>
 
             {/* Address */}
@@ -449,15 +473,7 @@ export function LandingPage() {
               >
                 <Facebook className="h-4 w-4" />
               </a>
-              <a
-                href="https://instagram.com/nataliescatering"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-text-muted hover:text-gold transition-colors"
-                title="Instagram"
-              >
-                <Instagram className="h-4 w-4" />
-              </a>
+            
             </div>
           </div>
 

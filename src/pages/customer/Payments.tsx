@@ -8,7 +8,11 @@ import {
   AlertCircle,
   Image as ImageIcon,
   Printer,
+  QrCode,
+  Copy,
+  Download,
 } from 'lucide-react';
+import { Dialog } from '@/components/ui/Dialog';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -24,8 +28,25 @@ import { formatCurrency, formatDate, isValidPaymentReference, PAYMENT_REFERENCE_
 import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_TYPE_LABELS } from '@/lib/paymentLabels';
 import { PaymentType, PaymentMethod, Payment } from '@/types/database';
 
+// Where customers send GCash / InstaPay payments.
+const PAYMENT_QR_SRC = '/images/payment-qr.png';
+const PAYMENT_MOBILE_NO = '09198104712';
+const PAYMENT_ACCOUNT_NAME = 'RE****R G.';
+
 export function Payments() {
   const [searchParams] = useSearchParams();
+  const [qrOpen, setQrOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copyMobileNo = async () => {
+    try {
+      await navigator.clipboard.writeText(PAYMENT_MOBILE_NO);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard blocked; the number is still visible to copy by hand */
+    }
+  };
   const { profile } = useAuth();
   const { reservations, payments, themes, packages, submitPayment } = useCateringData();
 
@@ -65,8 +86,6 @@ export function Payments() {
   const preselectedResId = isQueryPayable ? queryResId : payableReservations[0]?.id || 0;
 
   const [reservationId, setReservationId] = useState<number>(preselectedResId);
-  const [amountInput, setAmountInput] = useState<string>('');
-  const [amountUserEdited, setAmountUserEdited] = useState(false);
   const [paymentType, setPaymentType] = useState<PaymentType>('downpayment');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('gcash');
   const [referenceNumber, setReferenceNumber] = useState<string>('');
@@ -79,8 +98,6 @@ export function Payments() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [receiptPayment, setReceiptPayment] = useState<Payment | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const amount = amountInput.trim() === '' ? 0 : Number(amountInput);
 
   const selectedReservation = payableReservations.find(r => r.id === Number(reservationId));
   const selectedReservationPayments = payments.filter(
@@ -98,41 +115,22 @@ export function Payments() {
   const outstandingBalance = Math.max(0, remainingBalance - pendingPaid);
   const requiresProof = paymentMethod !== 'cash';
 
+  // The amount is fixed by the payment type: down payment is 50% of the contract
+  // (capped at what is still owed); final balance and full payment cover the rest.
+  const amount = selectedReservation
+    ? Math.round(
+        (paymentType === 'downpayment'
+          ? Math.min(selectedReservation.total_amount * 0.5, outstandingBalance)
+          : outstandingBalance) * 100
+      ) / 100
+    : 0;
+
   // Sync default selection if reservations load after mount
   useEffect(() => {
     if (!reservationId && payableReservations.length > 0) {
       setReservationId(payableReservations[0].id);
     }
   }, [reservationId, payableReservations]);
-
-  // Reset userEdited flag when target booking or payment type changes
-  useEffect(() => {
-    setAmountUserEdited(false);
-  }, [reservationId, paymentType]);
-
-  // Update default suggested amount when reservation or payment type changes
-  useEffect(() => {
-    if (amountUserEdited || !selectedReservation) return;
-    if (paymentType === 'downpayment') {
-      setAmountInput(
-        Math.min(selectedReservation.total_amount * 0.5, outstandingBalance).toFixed(2)
-      );
-    } else if (paymentType === 'full_payment') {
-      setAmountInput(outstandingBalance.toFixed(2));
-    } else {
-      // BUG-08: remaining balance is total minus verified and pending payments
-      setAmountInput(outstandingBalance.toFixed(2));
-    }
-  }, [
-    reservationId,
-    paymentType,
-    payableReservations,
-    payments,
-    amountUserEdited,
-    selectedReservation,
-    remainingBalance,
-    outstandingBalance,
-  ]);
 
   // Handle local file preview with BUG-10 validation
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -252,7 +250,6 @@ export function Payments() {
       setReferenceNumber('');
       setProofPreview('');
       setSelectedFile(null);
-      setAmountUserEdited(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err: any) {
       setErrorMessage(err.message || 'Payment submission failed.');
@@ -302,7 +299,7 @@ export function Payments() {
           <CardHeader>
             <CardTitle>Submit a Payment</CardTitle>
             <p className="text-xs text-text-muted">
-              Pay via GCash, bank transfer, card, or cash, then upload your proof of payment for
+              Pay via GCash, card, or cash, then upload your proof of payment for
               verification.
             </p>
           </CardHeader>
@@ -340,7 +337,6 @@ export function Payments() {
                     value={reservationId}
                     onChange={e => {
                       setReservationId(Number(e.target.value));
-                      setAmountUserEdited(false);
                     }}
                     required
                   >
@@ -393,7 +389,6 @@ export function Payments() {
                     value={paymentType}
                     onChange={e => {
                       setPaymentType(e.target.value as PaymentType);
-                      setAmountUserEdited(false);
                     }}
                   >
                     <option value="downpayment">{PAYMENT_TYPE_LABELS.downpayment}</option>
@@ -410,8 +405,7 @@ export function Payments() {
                     value={paymentMethod}
                     onChange={e => setPaymentMethod(e.target.value as PaymentMethod)}
                   >
-                    <option value="gcash">GCash (0917-888-0001)</option>
-                    <option value="bank_transfer">BDO / BPI Bank Transfer</option>
+                    <option value="gcash">GCash / InstaPay QR ({PAYMENT_MOBILE_NO})</option>
                     <option value="credit_card">Credit / Debit Card</option>
                     <option value="cash">Cash on Site</option>
                   </Select>
@@ -425,21 +419,17 @@ export function Payments() {
                   </label>
                   <Input id="pay-amount-to-pay"
                     type="text"
-                    inputMode="decimal"
-                    autoComplete="off"
-                    required
-                    placeholder="e.g. 5000.00"
-                    value={amountInput}
-                    onChange={e => {
-                      const raw = e.target.value.replace(/,/g, '');
-                      if (/^\d*\.?\d{0,2}$/.test(raw)) {
-                        setAmountInput(raw);
-                        setAmountUserEdited(true);
-                      }
-                    }}
+                    readOnly
+                    aria-readonly="true"
+                    tabIndex={-1}
+                    value={formatCurrency(amount)}
+                    className="cursor-not-allowed bg-cream-dark/40 font-semibold"
                   />
                   <p className="mt-1 text-[11px] text-text-muted">
-                    You may type any amount up to the outstanding balance:{' '}
+                    {paymentType === 'downpayment'
+                      ? 'Fixed at 50% of the contract total.'
+                      : 'Fixed at the full outstanding balance.'}{' '}
+                    Outstanding balance:{' '}
                     <span className="font-semibold text-text">
                       {formatCurrency(outstandingBalance)}
                     </span>
@@ -461,7 +451,7 @@ export function Payments() {
                     placeholder={
                       paymentMethod === 'cash'
                         ? 'Optional for cash payments'
-                        : 'e.g. GCASH-19284091 or BDO-REF-4921'
+                        : 'e.g. GCASH-19284091'
                     }
                     value={referenceNumber}
                     onChange={e => setReferenceNumber(e.target.value)}
@@ -469,7 +459,7 @@ export function Payments() {
                   <p className="mt-1 text-[11px] text-text-muted">
                     {paymentMethod === 'cash'
                       ? 'Optional for cash on site. '
-                      : 'Required for GCash, bank, and card payments. '}
+                      : 'Required for GCash and card payments. '}
                     6–80 characters using letters, numbers, hyphens, underscores, or periods only.
                   </p>
                 </div>
@@ -503,7 +493,7 @@ export function Payments() {
                 </div>
                 <p className="mt-1 text-[11px] text-text-muted">
                   {requiresProof
-                    ? 'Required for GCash, bank transfer, and card payments. Upload a screenshot or photo of the transaction. JPG, PNG or WebP · max 5 MB.'
+                    ? 'Required for GCash and card payments. Upload a screenshot or photo of the transaction. JPG, PNG or WebP · max 5 MB.'
                     : 'Optional for cash payments. Upload a photo if available. JPG, PNG or WebP · max 5 MB.'}
                 </p>
               </div>
@@ -533,27 +523,41 @@ export function Payments() {
             </CardHeader>
             <CardContent className="space-y-4 text-xs pt-4">
               <div className="rounded-lg bg-ink-soft p-3 border border-ink-muted/60">
-                <span className="text-gold-light font-bold block uppercase text-[10px]">
-                  GCash Express
+                <span className="text-gold-light font-bold flex items-center gap-1.5 uppercase text-[10px]">
+                  <QrCode className="h-3.5 w-3.5" /> Scan to Pay · InstaPay QR
                 </span>
-                <p className="font-mono text-base font-bold text-white mt-0.5">0917-888-0001</p>
-                <p className="text-cream/70 text-[11px]">Account Name: Natalie's Catering Corp</p>
+                <button
+                  type="button"
+                  onClick={() => setQrOpen(true)}
+                  className="mt-2 block w-full overflow-hidden rounded-md bg-white p-2 transition hover:ring-2 hover:ring-gold"
+                  aria-label="Enlarge payment QR code"
+                >
+                  <img
+                    src={PAYMENT_QR_SRC}
+                    alt={`InstaPay QR code for ${PAYMENT_MOBILE_NO}`}
+                    className="mx-auto w-full max-w-[220px]"
+                  />
+                </button>
+                <p className="mt-2 text-cream/70 text-[11px]">
+                  Scan with GCash, Maya, or any bank app that supports InstaPay. Tap the QR to enlarge.
+                </p>
               </div>
 
               <div className="rounded-lg bg-ink-soft p-3 border border-ink-muted/60">
                 <span className="text-gold-light font-bold block uppercase text-[10px]">
-                  BDO Unibank (Checking)
+                  GCash / InstaPay Mobile No.
                 </span>
-                <p className="font-mono text-base font-bold text-white mt-0.5">0049-1234-5678</p>
-                <p className="text-cream/70 text-[11px]">Account Name: Natalie's Catering Services</p>
-              </div>
-
-              <div className="rounded-lg bg-ink-soft p-3 border border-ink-muted/60">
-                <span className="text-gold-light font-bold block uppercase text-[10px]">
-                  BPI Savings
-                </span>
-                <p className="font-mono text-base font-bold text-white mt-0.5">3890-4829-11</p>
-                <p className="text-cream/70 text-[11px]">Account Name: Natalie's Catering Services</p>
+                <div className="mt-0.5 flex items-center justify-between gap-2">
+                  <p className="font-mono text-base font-bold text-white">{PAYMENT_MOBILE_NO}</p>
+                  <button
+                    type="button"
+                    onClick={copyMobileNo}
+                    className="flex shrink-0 items-center gap-1 rounded border border-ink-muted/60 px-2 py-1 text-[10px] font-semibold text-cream/80 hover:border-gold hover:text-gold-light"
+                  >
+                    <Copy className="h-3 w-3" /> {copied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <p className="text-cream/70 text-[11px]">Account Name: {PAYMENT_ACCOUNT_NAME}</p>
               </div>
             </CardContent>
           </Card>
@@ -642,6 +646,35 @@ export function Payments() {
           />
         </CardContent>
       </Card>
+
+      <Dialog
+        open={qrOpen}
+        onOpenChange={setQrOpen}
+        title="Scan to Pay"
+        description={`InstaPay QR · ${PAYMENT_MOBILE_NO}`}
+        className="max-w-sm"
+      >
+        <img
+          src={PAYMENT_QR_SRC}
+          alt={`InstaPay QR code for ${PAYMENT_MOBILE_NO}`}
+          className="mx-auto w-full rounded-md border border-border"
+        />
+        <p className="mt-3 text-center text-xs text-text-muted">
+          After paying, enter the reference number and upload a screenshot of the receipt in the form.
+        </p>
+        <div className="mt-4 flex gap-2">
+          <a
+            href={PAYMENT_QR_SRC}
+            download="Natalies-Catering-Payment-QR.png"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-border px-3 py-2 text-xs font-semibold text-ink hover:bg-cream-dark"
+          >
+            <Download className="h-4 w-4" /> Save QR
+          </a>
+          <Button variant="gold" className="flex-1" onClick={() => setQrOpen(false)}>
+            Done
+          </Button>
+        </div>
+      </Dialog>
 
       <PaymentReceiptDialog
         open={receiptPayment !== null}

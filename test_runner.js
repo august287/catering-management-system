@@ -102,9 +102,167 @@ async function runTests() {
     const mockData = await loadTsModule('./src/lib/mockData.ts');
 
     // Profiles
-    assert.strictEqual(mockData.INITIAL_PROFILES.length, 4, 'Must have 4 seed profiles');
+    assert.strictEqual(mockData.INITIAL_PROFILES.length, 5, 'Must have 5 seed profiles');
     const adminProf = mockData.INITIAL_PROFILES.find(p => p.role === 'admin');
     assert.ok(adminProf, 'Must contain an admin profile');
+    const superProf = mockData.INITIAL_PROFILES.find(p => p.role === 'super_admin');
+    assert.ok(superProf, 'Must contain a super admin profile');
+    assert.ok(
+      mockData.INITIAL_ACCOUNTS.some(a => a.email === 'superadmin@caterpro.ph' && a.profileId === superProf.id),
+      'Super admin demo account must point at the super admin profile'
+    );
+
+    // Role changes: customers can never be promoted to staff
+    const db = await loadTsModule('./src/types/database.ts');
+    assert.ok(db.roleChangeError('customer', 'admin'), 'Customer -> Admin must be blocked');
+    assert.ok(db.roleChangeError('customer', 'super_admin'), 'Customer -> Super Admin must be blocked');
+    assert.strictEqual(db.roleChangeError('admin', 'super_admin'), null, 'Admin -> Super Admin must be allowed');
+    assert.strictEqual(db.roleChangeError('super_admin', 'admin'), null, 'Super Admin -> Admin must be allowed');
+    assert.strictEqual(db.roleChangeError('admin', 'customer'), null, 'Admin -> Customer must be allowed');
+    const promoSql = fs.readFileSync('supabase/migrations/014_block_customer_promotion.sql', 'utf8');
+    assert.ok(
+      /old\.role = 'customer' and new\.role in \('admin', 'super_admin'\)/.test(promoSql),
+      'Database must also block customer promotion'
+    );
+
+    // Staff account management: only super admins, only staff targets, never yourself
+    const staff = await loadTsModule('./src/lib/staffRules.ts');
+    const sa = { id: 'sa', role: 'super_admin' };
+    assert.strictEqual(staff.staffActionError(sa, { id: 'a1', role: 'admin' }), null, 'Super admin may manage an admin');
+    assert.strictEqual(staff.staffActionError(sa, { id: 'sa2', role: 'super_admin' }), null, 'Super admin may manage another super admin');
+    assert.ok(staff.staffActionError(sa, { id: 'c1', role: 'customer' }), 'Customers must not be managed here');
+    assert.ok(staff.staffActionError(sa, sa), 'Super admin must not manage their own account');
+    assert.ok(staff.staffActionError({ id: 'a1', role: 'admin' }, { id: 'a2', role: 'admin' }), 'Admins must not manage accounts');
+    assert.ok(staff.STRONG_PASSWORD.test('Natalie#2026'), 'Strong password must pass');
+    assert.ok(!staff.STRONG_PASSWORD.test('admin123'), 'Weak password must fail');
+    // Display names
+    assert.strictEqual(staff.displayNameError('Natalie Santos'), null, 'Normal name must be accepted');
+    assert.ok(staff.displayNameError(' A '), 'One-letter name must be rejected');
+    assert.ok(staff.displayNameError('x'.repeat(61)), 'Overlong name must be rejected');
+    assert.ok(staff.displayNameError('<script>'), 'Name with < > must be rejected');
+    assert.ok(staff.canRename(sa, sa), 'Super admin may rename themselves');
+    assert.ok(staff.canRename(sa, { id: 'a1', role: 'admin' }), 'Super admin may rename staff');
+    assert.ok(!staff.canRename(sa, { id: 'c1', role: 'customer' }), 'Super admin must not rename customers here');
+    assert.ok(!staff.canRename({ id: 'a1', role: 'admin' }, { id: 'a1', role: 'admin' }), 'Admins use no rename button here');
+    const fnSrc = fs.readFileSync('supabase/functions/manage-staff/index.ts', 'utf8');
+    assert.ok(fnSrc.includes("caller?.role !== 'super_admin'"), 'Edge Function must require a super admin');
+    assert.ok(fnSrc.includes('targetId === callerId'), 'Edge Function must refuse the caller\'s own account');
+    assert.ok(fnSrc.includes('STAFF_ROLES.includes(target.role)'), 'Edge Function must only touch staff accounts');
+
+    // Theme & package pictures resolve by name to files that exist
+    const themeImages = await loadTsModule('./src/lib/themeImages.ts');
+    const imageExists = src => fs.existsSync(path.join('public', src.replace(/^\//, '')));
+    for (const theme of mockData.INITIAL_THEMES) {
+      const gallery = themeImages.getThemeImages(theme);
+      assert.ok(gallery.length > 0, `Theme ${theme.name} must have pictures`);
+      for (const src of gallery) assert.ok(imageExists(src), `Picture ${src} for ${theme.name} not found`);
+      const slug = themeImages.slugify(theme.name);
+      assert.strictEqual(themeImages.findThemeBySlug(mockData.INITIAL_THEMES, slug)?.id, theme.id, `Route /${slug} must open ${theme.name}`);
+      assert.strictEqual(themeImages.findThemeBySlug(mockData.INITIAL_THEMES, String(theme.id))?.id, theme.id, 'Old numeric theme links must still work');
+    }
+    assert.strictEqual(themeImages.slugify('Christening & Dedication'), 'christening-dedication');
+    assert.strictEqual(themeImages.getPackageImage, undefined, 'Packages no longer have pictures');
+
+    // Menu customization: package allowances and course sorting
+    const menu = await loadTsModule('./src/lib/menuCourses.ts');
+    const silver = mockData.INITIAL_PACKAGES.find(p => /silver/i.test(p.name));
+    const silverRules = menu.getPackageMenuRules(silver);
+    assert.deepStrictEqual(
+      silverRules.counts,
+      { soup: 1, appetizer: 1, main: 3, noodle: 1, rice: 1, dessert: 1 },
+      'Silver Buffet allowance must match its description'
+    );
+    assert.ok(silverRules.included.includes('Bottomless Iced Tea'), 'Silver includes bottomless iced tea');
+    for (const pkg of mockData.INITIAL_PACKAGES) {
+      assert.ok(menu.offeredCourses(menu.getPackageMenuRules(pkg)).length > 0, `${pkg.name} must offer menu choices`);
+    }
+    // Saved rules win over defaults; bad values are cleaned
+    const saved = menu.getPackageMenuRules({ name: 'Silver Buffet', menu_rules: { counts: { main: 2, dessert: -1, bogus: 4, rice: 99 } } });
+    assert.deepStrictEqual(saved.counts, { main: 2, rice: menu.MAX_PER_COURSE }, 'Saved allowance must be used and cleaned');
+
+    const groups = menu.groupMenuByCourse(mockData.INITIAL_MENU_ITEMS, mockData.INITIAL_CATEGORIES);
+    const names = key => groups[key].map(i => i.name);
+    assert.ok(names('rice').includes('Toasted Garlic Golden Rice'), 'Rice dishes sort into Rice');
+    assert.ok(names('noodle').includes('Special Pancit Canton Guisado'), 'Pancit sorts into Noodles');
+    assert.ok(!names('noodle').some(n => /rice/i.test(n)), 'No rice in Noodles');
+    assert.ok(names('drink').includes('Fresh Calamansi Honey Cooler'), 'Coolers sort into Drinks');
+    assert.ok(names('dessert').includes('Royal Leche Flan') && !names('dessert').some(n => /cooler/i.test(n)), 'Desserts exclude drinks');
+    assert.ok(names('main').includes('Garlic Butter Tiger Prawns'), 'Seafood counts as a main course');
+    // Every standard package can be fully satisfied by the seeded menu
+    for (const pkg of mockData.INITIAL_PACKAGES) {
+      const rules = menu.getPackageMenuRules(pkg);
+      for (const c of menu.offeredCourses(rules)) {
+        assert.ok(groups[c.key].length >= c.count, `${pkg.name}: not enough ${c.label} dishes on the menu`);
+      }
+    }
+
+    // Selection validation
+    const pick = { soup: [5], appetizer: [1], main: [8, 9, 10], noodle: [16], rice: [18], dessert: [21] };
+    assert.strictEqual(menu.menuSelectionError(silverRules, pick, groups), null, 'Complete Silver selection must pass');
+    assert.ok(menu.menuSelectionError(silverRules, { ...pick, main: [8, 9] }, groups), 'Too few mains must fail');
+    assert.ok(menu.menuSelectionError(silverRules, { ...pick, main: [8, 9, 10, 11] }, groups), 'Too many mains must fail');
+    assert.ok(menu.menuSelectionError(silverRules, { ...pick, rice: [16] }, groups), 'A noodle dish cannot count as rice');
+    const snapshot = menu.toMenuSelectionItems(silverRules, pick, mockData.INITIAL_MENU_ITEMS);
+    assert.strictEqual(snapshot.length, 8, 'Snapshot keeps every chosen dish');
+    assert.ok(snapshot.every(s => s.name && s.course && s.item_id), 'Snapshot keeps dish names');
+    assert.ok(menu.menuSelectionText(snapshot).includes('Main Courses: Slow-Roasted Beef Caldereta'), 'Text summary lists courses');
+    const menuSql = fs.readFileSync('supabase/migrations/016_menu_customization.sql', 'utf8');
+    assert.ok(/add column if not exists menu_selection jsonb/.test(menuSql), 'Migration adds reservations.menu_selection');
+    assert.ok(/add column if not exists menu_rules jsonb/.test(menuSql), 'Migration adds packages.menu_rules');
+    assert.strictEqual(menu.firstIncompleteCourse(silverRules, pick, groups), null, 'Complete menu has no unfinished course');
+    assert.strictEqual(menu.firstIncompleteCourse(silverRules, { ...pick, main: [8] }, groups), 'main', 'Points at the unfinished course');
+    assert.strictEqual(menu.firstIncompleteCourse(silverRules, {}, groups), 'appetizer', 'Points at the first course in serving order');
+
+    // Payment verification: older references must not block status-only updates
+    const refSql = fs.readFileSync('supabase/migrations/017_fix_payment_reference_check.sql', 'utf8');
+    assert.ok(/drop constraint if exists payments_reference_number_format/.test(refSql), '017 drops the row-wide CHECK');
+    assert.ok(/before insert or update of reference_number/.test(refSql), '017 only checks new or edited references');
+    assert.ok(/is not distinct from old\.reference_number/.test(refSql), '017 skips unchanged references');
+
+    // Registration: duplicate emails are refused (Supabase hides them as a user with no identities)
+    const authSrc = fs.readFileSync('src/hooks/useAuth.tsx', 'utf8');
+    assert.ok(/identities\.length === 0/.test(authSrc), 'Sign-up must treat a user with no identities as a duplicate email');
+    assert.ok(/already \(been \)\?registered/.test(authSrc), 'Sign-up must map "already registered" to a friendly error');
+
+    // Landing page lists the system's packages, not a hard-coded copy
+    const landingSrc = fs.readFileSync('src/pages/LandingPage.tsx', 'utf8');
+    assert.ok(!/name: 'Platinum Royal'|price: '₱/.test(landingSrc), 'Landing page must not hard-code packages');
+    assert.ok(/from\('packages'\)/.test(landingSrc), 'Landing page must load packages from the database');
+
+    // Event calendar shows only active bookings by name
+    const calSrc = fs.readFileSync('src/pages/admin/EventCalendar.tsx', 'utf8');
+    assert.ok(/reservations=\{activeEvents\}/.test(calSrc), 'Calendar grid must only get active bookings');
+    assert.ok(/filter\(r => blocksDate\(r\.status\)\)/.test(calSrc), 'Completed/cancelled bookings must be filtered out');
+
+    // Receipts: totals are as of the receipt's own payment
+    const rm = await loadTsModule('./src/lib/receiptMath.ts');
+    const down = { id: 26, amount: 17500, status: 'verified', paid_at: '2026-11-12T10:00:00Z' };
+    const finalPay = { id: 27, amount: 17500, status: 'verified', paid_at: '2026-11-20T10:00:00Z' };
+    // The screenshot case: down payment receipt reprinted after the final payment was made
+    let s = rm.receiptSummary(down, [down, finalPay], 35000);
+    assert.strictEqual(s.paidBefore, 0, 'Down payment receipt must not count later payments');
+    assert.strictEqual(s.balanceAfter, 17500, 'Down payment receipt must show the balance left after it');
+    s = rm.receiptSummary(finalPay, [down, finalPay], 35000);
+    assert.strictEqual(s.paidBefore, 17500, 'Final payment receipt counts the earlier down payment');
+    assert.strictEqual(s.balanceAfter, 0, 'Final payment receipt shows fully paid');
+    // Pending and rejected payments are not subtracted
+    const pending = { id: 28, amount: 5000, status: 'pending_verification', paid_at: '2026-11-21T10:00:00Z' };
+    s = rm.receiptSummary(pending, [down, finalPay, pending], 40000);
+    assert.strictEqual(s.thisCounted, false, 'Pending payment is not counted');
+    assert.strictEqual(s.balanceAfter, 5000, 'Balance ignores the uncounted payment');
+    // Earlier rejected payments are not "paid before"
+    const rejected = { id: 25, amount: 9999, status: 'rejected', paid_at: '2026-11-10T10:00:00Z' };
+    assert.strictEqual(rm.receiptSummary(down, [rejected, down], 35000).paidBefore, 0, 'Rejected payments never count');
+    // Same paid date: order by id
+    const sameDayA = { id: 40, amount: 100, status: 'verified', paid_at: '2026-11-12' };
+    const sameDayB = { id: 41, amount: 200, status: 'verified', paid_at: '2026-11-12' };
+    assert.strictEqual(rm.receiptSummary(sameDayB, [sameDayA, sameDayB], 1000).paidBefore, 100, 'Same-day payments ordered by id');
+    // Overpayment is reported, balance never negative
+    s = rm.receiptSummary(finalPay, [down, finalPay], 30000);
+    assert.strictEqual(s.balanceAfter, 0, 'Balance never negative');
+    assert.strictEqual(s.overpaid, 5000, 'Overpayment is shown');
+    const fnRec = fs.readFileSync('supabase/functions/send-receipt/index.ts', 'utf8');
+    assert.ok(/function receiptSummary/.test(fnRec) && !/verifiedTotal/.test(fnRec), 'Email receipt uses the same as-of-this-payment totals');
 
     // Accounts
     assert.ok(Array.isArray(mockData.INITIAL_ACCOUNTS), 'INITIAL_ACCOUNTS must be an array');
@@ -266,6 +424,62 @@ async function runTests() {
     }
 
     console.log('✓ Supabase schema, migration SQL & code integrity verified');
+
+    // Reservation calendar availability & double-booking guard
+    console.log('Testing src/lib/availability.ts ...');
+    const avail = await loadTsModule('./src/lib/availability.ts');
+    const sample = [
+      { id: 1, event_date: '2026-11-20', status: 'confirmed' },
+      { id: 2, event_date: '2026-11-21', status: 'cancelled' },
+      { id: 3, event_date: '2026-11-22', status: 'completed' },
+      { id: 4, event_date: '2026-11-23', status: 'pending' },
+      { id: 5, event_date: '2026-11-23', status: 'in_progress' },
+    ];
+    const map = avail.buildAvailabilityMap(sample);
+    assert.deepStrictEqual(map, { '2026-11-20': 1, '2026-11-23': 2 }, 'cancelled/completed bookings must free their date');
+    assert.deepStrictEqual(avail.buildAvailabilityMap(sample, 1), { '2026-11-23': 2 }, 'excluded reservation must not count');
+    assert.ok(avail.isDateFullyBooked(map, '2026-11-20'), 'a date with an active booking is full at capacity 1');
+    assert.ok(!avail.isDateFullyBooked(map, '2026-11-21'), 'a date with only a cancelled booking is open');
+    assert.ok(!avail.isDateFullyBooked(map, '2026-11-20', 2), 'capacity 2 leaves a slot');
+    const today = '2026-11-01', minKey = '2026-11-08';
+    assert.strictEqual(avail.getDateStatus('2026-10-31', map, today, minKey), 'past');
+    assert.strictEqual(avail.getDateStatus('2026-11-05', map, today, minKey), 'too_soon');
+    assert.strictEqual(avail.getDateStatus('2026-11-20', map, today, minKey), 'booked');
+    assert.strictEqual(avail.getDateStatus('2026-11-21', map, today, minKey), 'available');
+    assert.strictEqual(avail.getDateStatus('2026-11-20', map, today, minKey, 2), 'limited');
+    assert.ok(avail.isDoubleBookingError('DATE_FULLY_BOOKED: 2026-11-20 is already fully booked.'));
+    assert.ok(!avail.isDoubleBookingError('some other error'));
+    const grid = avail.getMonthGrid(2026, 10); // November 2026
+    assert.strictEqual(grid.length % 7, 0, 'month grid must be whole weeks');
+    assert.strictEqual(grid[0].getDay(), 0, 'month grid must start on Sunday');
+    assert.ok(grid.some(d => avail.toDateKey(d) === '2026-11-30'), 'month grid must include the last day');
+    assert.strictEqual(avail.MAX_EVENTS_PER_DAY, 1, 'keep MAX_EVENTS_PER_DAY in sync with max_events_per_day() in migration 011');
+
+    const availSql = fs.readFileSync('./supabase/migrations/011_reservation_availability.sql', 'utf-8');
+    assert.ok(availSql.includes('select 1 $$'), 'migration 011 capacity must match MAX_EVENTS_PER_DAY');
+    assert.ok(availSql.includes('pg_advisory_xact_lock'), 'double-booking trigger must lock the date against concurrent inserts');
+    assert.ok(availSql.includes('security definer') && !/selects+r.*/i.test(availSql), 'availability RPC must expose counts only');
+    const ccd = fs.readFileSync('./src/hooks/useCateringData.ts', 'utf-8');
+    const createBody = ccd.slice(ccd.indexOf('const createReservation'), ccd.indexOf('const updateReservationStatus'));
+    assert.ok(createBody.indexOf('isDateFullyBooked') < createBody.indexOf("from('reservations')"), 'createReservation must check availability before inserting');
+    // Auto-cancel of double bookings: keep the most advanced, then earliest, booking.
+    const dupes = [
+      { id: 10, event_date: '2026-12-01', status: 'pending', created_at: '2026-10-01T00:00:00Z' },
+      { id: 11, event_date: '2026-12-01', status: 'confirmed', created_at: '2026-10-05T00:00:00Z' },
+      { id: 12, event_date: '2026-12-01', status: 'pending', created_at: '2026-09-01T00:00:00Z' },
+      { id: 13, event_date: '2026-12-02', status: 'pending', created_at: '2026-10-02T00:00:00Z' },
+      { id: 14, event_date: '2026-12-02', status: 'pending', created_at: '2026-10-01T00:00:00Z' },
+      { id: 15, event_date: '2026-12-02', status: 'cancelled', created_at: '2026-08-01T00:00:00Z' },
+      { id: 16, event_date: '2026-12-03', status: 'pending', created_at: '2026-10-01T00:00:00Z' },
+    ];
+    const loserIds = avail.findDoubleBookingLosers(dupes).map(r => r.id).sort((a, b) => a - b);
+    assert.deepStrictEqual(loserIds, [10, 12, 13], 'confirmed beats pending; earliest pending wins; cancelled ignored');
+    assert.deepStrictEqual(avail.findDoubleBookingLosers(sample.filter(r => r.id !== 5)), [], 'no losers without a double booking');
+    const resolveSql = fs.readFileSync('./supabase/migrations/012_auto_cancel_double_bookings.sql', 'utf-8');
+    assert.ok(resolveSql.includes("when 'in_progress' then 0") && resolveSql.includes("when 'confirmed' then 1"), 'SQL resolver must rank like findDoubleBookingLosers');
+    console.log('✓ src/lib/availability.ts & double-booking guard tests passed');
+
+
 
     console.log('\n========================================');
     console.log('ALL TESTS PASSED SUCCESSFULLY!');

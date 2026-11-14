@@ -4,12 +4,48 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { PasswordInput } from '@/components/ui/PasswordInput';
-import { Utensils, AlertCircle, Shield, User } from 'lucide-react';
+import { AlertCircle, ShieldCheck, ShieldPlus } from 'lucide-react';
+import { homeForRole } from '@/components/ProtectedRoute';
+import { UserRole } from '@/types/database';
 import logo from '/public/images/natalielogo.jpg';
 
-export function Login() {
-  const [email, setEmail] = useState('admin@caterpro.ph');
-  const [password, setPassword] = useState('admin123');
+/** Which sign-in page this is. 'any' is the main /login page. */
+export type LoginPortal = 'any' | 'admin' | 'super_admin';
+
+const PORTALS: Record<
+  LoginPortal,
+  { path: string; linkLabel: string; title: string; subtitle: string; allowed: UserRole[] | null; deniedMessage: string }
+> = {
+  any: {
+    path: '/login',
+    linkLabel: 'Log in as customer',
+    title: 'Welcome back',
+    subtitle: 'Sign in to manage bookings, menus, and payments.',
+    allowed: null,
+    deniedMessage: '',
+  },
+  admin: {
+    path: '/login/admin',
+    linkLabel: 'Log in as admin',
+    title: 'Admin sign in',
+    subtitle: 'For staff managing reservations, menus, and payments.',
+    allowed: ['admin', 'super_admin'],
+    deniedMessage: "This account doesn't have admin access.",
+  },
+  super_admin: {
+    path: '/login/superadmin',
+    linkLabel: 'Log in as super admin',
+    title: 'Super admin sign in',
+    subtitle: 'Full access, including user and role management.',
+    allowed: ['super_admin'],
+    deniedMessage: "This account doesn't have super admin access.",
+  },
+};
+
+export function Login({ portal = 'any' }: { portal?: LoginPortal }) {
+  const config = PORTALS[portal];
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   
@@ -32,7 +68,14 @@ export function Login() {
   const MAX_ATTEMPTS = 5;
   const LOCKOUT_DURATION = 30; // seconds
 
-  const { login } = useAuth();
+  const { login, logout } = useAuth();
+
+  // Clear the form when switching between the customer/admin/super admin pages.
+  useEffect(() => {
+    setEmail('');
+    setPassword('');
+    setError('');
+  }, [portal]);
   const navigate = useNavigate();
 
   // Handle countdown timer for lockout
@@ -69,7 +112,13 @@ export function Login() {
     }
 
     setSubmitting(true);
-    const result = await login(email, password);
+    let result = await login(email, password);
+
+    // Staff pages only let in accounts with that role; sign anyone else back out.
+    if (result.success && config.allowed && !(result.role && config.allowed.includes(result.role))) {
+      await logout();
+      result = { success: false, error: config.deniedMessage };
+    }
     setSubmitting(false);
 
     if (result.success) {
@@ -78,11 +127,7 @@ export function Login() {
         sessionStorage.removeItem('caterpro_lockout_until');
         sessionStorage.removeItem('caterpro_login_attempts');
       } catch {}
-      if (result.role === 'admin') {
-        navigate('/admin/dashboard');
-      } else {
-        navigate('/customer/menu');
-      }
+      navigate(homeForRole(result.role));
     } else {
       const newAttemptCount = attempts + 1;
       setAttempts(newAttemptCount);
@@ -101,18 +146,6 @@ export function Login() {
         setError(result.error || `Authentication failed. ${MAX_ATTEMPTS - newAttemptCount} attempts remaining.`);
       }
     }
-  };
-
-  const autofill = (type: 'admin' | 'customer') => {
-    if (lockoutTime > 0) return;
-    if (type === 'admin') {
-      setEmail('admin@caterpro.ph');
-      setPassword('admin123');
-    } else {
-      setEmail('customer@test.ph');
-      setPassword('pass123');
-    }
-    setError('');
   };
 
   return (
@@ -150,7 +183,7 @@ export function Login() {
         </div>
 
         <div className="text-xs text-cream/60">
-          © {new Date().getFullYear()} Natalie's Catering System. Capstone Defense Demo.
+          © {new Date().getFullYear()} Natalie's Catering System.
         </div>
       </div>
 
@@ -165,8 +198,14 @@ export function Login() {
             <span className="font-serif text-xl font-bold text-ink">Natalie's Catering</span>
           </div>
 
-          <h2 className="font-serif text-3xl font-bold tracking-tight text-ink">Welcome back</h2>
-          <p className="mt-2 text-sm text-text-muted">Sign in to manage bookings, menus, and payments.</p>
+          {portal !== 'any' && (
+            <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-gold/30 bg-gold-light px-3 py-1 text-xs font-semibold text-gold-dark">
+              {portal === 'super_admin' ? <ShieldPlus className="h-3.5 w-3.5" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+              {portal === 'super_admin' ? 'Super Admin Portal' : 'Admin Portal'}
+            </div>
+          )}
+          <h2 className="font-serif text-3xl font-bold tracking-tight text-ink">{config.title}</h2>
+          <p className="mt-2 text-sm text-text-muted">{config.subtitle}</p>
 
           {(error || lockoutTime > 0) && (
             <div role="alert" className="mt-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -195,9 +234,14 @@ export function Login() {
             </div>
 
             <div>
-              <label htmlFor="login-password" className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
-                Password
-              </label>
+              <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                <label htmlFor="login-password" className="block text-xs font-semibold uppercase tracking-wider text-text-muted">
+                  Password
+                </label>
+                <Link to="/forgot-password" className="text-xs font-semibold text-gold hover:underline">
+                  Forgot password?
+                </Link>
+              </div>
               <PasswordInput id="login-password"
                 required
                 value={password}
@@ -221,48 +265,25 @@ export function Login() {
             </Button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-text-muted">
-            Don't have an account?{' '}
-            <Link to="/register" className="font-semibold text-gold hover:underline">
-              Register here
-            </Link>
-          </p>
+          {portal === 'any' && (
+            <p className="mt-6 text-center text-sm text-text-muted">
+              Don't have an account?{' '}
+              <Link to="/register" className="font-semibold text-gold hover:underline">
+                Register here
+              </Link>
+            </p>
+          )}
 
-          {/* Demo Credentials Quick Switcher */}
-          <div className="mt-8 rounded-xl border border-border bg-white p-5 shadow-card">
-            <div className="flex items-center justify-between border-b border-border pb-2.5 mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-ink">
-                Demo Credentials (One-Click Auto-Fill)
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-2.5">
-              <button
-                type="button"
-                onClick={() => autofill('admin')}
-                disabled={lockoutTime > 0}
-                className="flex items-center justify-center gap-1.5 rounded-lg border border-border bg-cream-dark/50 p-2.5 text-xs font-medium text-text hover:border-gold hover:bg-gold-light/40 transition-all text-left disabled:opacity-50 disabled:pointer-events-none"
-              >
-                <Shield className="h-3.5 w-3.5 text-gold shrink-0" />
-                <div>
-                  <div className="font-bold text-ink">Admin Role</div>
-                  <div className="text-[10px] text-text-muted">admin@caterpro.ph</div>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => autofill('customer')}
-                disabled={lockoutTime > 0}
-                className="flex items-center justify-center gap-1.5 rounded-lg border border-border bg-cream-dark/50 p-2.5 text-xs font-medium text-text hover:border-gold hover:bg-gold-light/40 transition-all text-left disabled:opacity-50 disabled:pointer-events-none"
-              >
-                <User className="h-3.5 w-3.5 text-gold shrink-0" />
-                <div>
-                  <div className="font-bold text-ink">Customer Role</div>
-                  <div className="text-[10px] text-text-muted">customer@test.ph</div>
-                </div>
-              </button>
-            </div>
-          </div>
+          {/* Staff sign-in pages are not linked from the public page; staff open
+              /login/admin or /login/superadmin directly (e.g. from a bookmark). */}
+          {portal !== 'any' && (
+            <p className="mt-6 text-center text-sm text-text-muted">
+              Not staff?{' '}
+              <Link to={PORTALS.any.path} className="font-semibold text-gold hover:underline">
+                {PORTALS.any.linkLabel}
+              </Link>
+            </p>
+          )}
         </div>
       </div>
     </div>

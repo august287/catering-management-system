@@ -21,7 +21,15 @@ interface AuthContextType {
     phone?: string
   ) => Promise<{ success: boolean; requiresConfirmation?: boolean; message?: string; error?: string }>;
   logout: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; demoReset?: boolean; error?: string }>;
+  updatePassword: (newPassword: string, demoEmail?: string) => Promise<{ success: boolean; error?: string }>;
+  verifyResetCode: (email: string, code: string) => Promise<{ success: boolean; error?: string }>;
+  verifyResetLink: (tokenHash: string) => Promise<{ success: boolean; error?: string }>;
+  setOwnDisplayName: (name: string) => void;
 }
+
+export const DUPLICATE_EMAIL_MESSAGE =
+  'An account with this email already exists. Please sign in, or use "Forgot password" if you can\'t remember your password.';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -36,6 +44,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
 
+    // If Supabase sent the reset link to the Site URL instead of /reset-password
+    // (redirect URL not allow-listed), move it to the reset page with its token.
+    const linkParams = new URLSearchParams(window.location.search);
+    if (
+      linkParams.get('token_hash') &&
+      linkParams.get('type') === 'recovery' &&
+      window.location.pathname !== '/reset-password'
+    ) {
+      window.location.replace(`/reset-password${window.location.search}`);
+      return;
+    }
+
     if (isSupabaseConfigured()) {
       // Safety timeout: if Supabase is unreachable, stop loading after 5s
       // so ProtectedRoute can redirect instead of showing an infinite spinner.
@@ -46,6 +66,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
         if (!mounted) return;
         clearTimeout(timeout);
+
+        // A reset link that landed on another page (e.g. Supabase fell back to the
+        // Site URL) must still open the new-password form, not the dashboard.
+        if (_event === 'PASSWORD_RECOVERY' && window.location.pathname !== '/reset-password') {
+          window.location.replace('/reset-password');
+          return;
+        }
 
         if (session?.user) {
           setUser({ id: session.user.id, email: session.user.email || '' });
@@ -59,7 +86,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setProfile(prof as Profile);
               setRole(prof.role as UserRole);
             } else if (mounted) {
-              const safeRole: UserRole = session.user.email?.toLowerCase() === 'admin@caterpro.ph' ? 'admin' : 'customer';
+              const safeRole: UserRole = 'customer'; // never guess admin without a profile row
               const metaName = session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User';
               setProfile({ id: session.user.id, name: metaName, role: safeRole });
               setRole(safeRole);
@@ -67,27 +94,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } catch (err) {
             console.warn('Profile fetch failed:', err);
             if (mounted) {
-              const safeRole: UserRole = session.user.email?.toLowerCase() === 'admin@caterpro.ph' ? 'admin' : 'customer';
+              const safeRole: UserRole = 'customer'; // never guess admin without a profile row
               const metaName = session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User';
               setProfile({ id: session.user.id, name: metaName, role: safeRole });
               setRole(safeRole);
             }
           }
         } else {
-          // Check local stored session for demo mode fallback
-          const stored = localStorage.getItem('caterpro_demo_session');
-          if (stored) {
-            try {
-              const parsed = JSON.parse(stored);
-              if (parsed?.user && parsed?.profile) {
-                setUser(parsed.user);
-                setProfile(parsed.profile);
-                setRole(parsed.profile.role);
-                if (mounted) setLoading(false);
-                return;
-              }
-            } catch {}
-          }
+          // Live site: an offline demo session must never sign anyone in. Clear any
+          // left over from demo mode so it can't show fake data.
+          localStorage.removeItem('caterpro_demo_session');
           setUser(null);
           setProfile(null);
           setRole(null);
@@ -122,31 +138,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const cleanEmail = email.trim().toLowerCase();
       if (isSupabaseConfigured()) {
-        try {
-          const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-          if (error) throw error;
-          if (data.user) {
-            const { data: prof } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', data.user.id)
-              .single();
-
-            const safeRole: UserRole = (prof?.role as UserRole) || (cleanEmail === 'admin@caterpro.ph' ? 'admin' : 'customer');
-            const userProfile = (prof as Profile) || {
-              id: data.user.id,
-              name: data.user.user_metadata?.name || 'User',
-              role: safeRole,
-            };
-
-            setUser({ id: data.user.id, email: data.user.email || email });
-            setProfile(userProfile);
-            setRole(safeRole);
-            return { success: true, role: safeRole };
-          }
-        } catch (sbErr: any) {
-          console.warn('Supabase auth attempt failed, checking demo store:', sbErr.message);
+        // Live site: only real Supabase accounts can sign in. Never fall back to the
+        // offline demo accounts here, or demo passwords would open a fake session.
+        const { data, error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+        if (error || !data.user) {
+          const msg = error?.message || '';
+          return {
+            success: false,
+            error: /confirm/i.test(msg)
+              ? 'Please confirm your email address before signing in.'
+              : 'Incorrect email or password. Please try again.',
+          };
         }
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', data.user.id)
+          .single();
+
+        // Without a profile row, treat the account as a customer (never guess admin).
+        const safeRole: UserRole = (prof?.role as UserRole) || 'customer';
+        const userProfile = (prof as Profile) || {
+          id: data.user.id,
+          name: data.user.user_metadata?.name || 'User',
+          role: safeRole,
+        };
+
+        setUser({ id: data.user.id, email: data.user.email || cleanEmail });
+        setProfile(userProfile);
+        setRole(safeRole);
+        return { success: true, role: safeRole };
       }
 
       // Demo Auth Mode: verify credentials against persistent accounts store
@@ -201,7 +222,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             emailRedirectTo: `${window.location.origin}/`,
           },
         });
-        if (error) throw error;
+        if (error) {
+          // Email confirmation off: Supabase reports the duplicate directly.
+          if (/already (been )?registered|already exists/i.test(error.message)) {
+            return { success: false, error: DUPLICATE_EMAIL_MESSAGE };
+          }
+          throw error;
+        }
+        // Email confirmation on: to hide which emails exist, Supabase answers a
+        // duplicate sign-up with a placeholder user that has no identities (and
+        // sends nothing). Treat that as "email already registered".
+        if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+          return { success: false, error: DUPLICATE_EMAIL_MESSAGE };
+        }
         if (data.user && data.session) {
           const newProfile: Profile = {
             id: data.user.id,
@@ -230,7 +263,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Demo registration with duplicate check and persistent account recording
       const accounts = mockStore.getAccounts();
       if (accounts.some(a => a.email.toLowerCase() === cleanEmail)) {
-        return { success: false, error: 'An account with this email already exists.' };
+        return { success: false, error: DUPLICATE_EMAIL_MESSAGE };
       }
 
       const newId = 'cust-' + Date.now();
@@ -261,6 +294,89 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Sends a reset link by email. With Supabase the link opens /reset-password with a
+  // recovery session. In offline demo mode there is no mail server, so the caller is
+  // told to go straight to the reset form.
+  const requestPasswordReset = async (
+    email: string
+  ): Promise<{ success: boolean; demoReset?: boolean; error?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return { success: false, error: 'Please enter a valid email address.' };
+    }
+    if (isSupabaseConfigured()) {
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+        // Must be listed under Auth > URL Configuration > Redirect URLs in Supabase.
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    }
+    const exists = mockStore.getAccounts().some(a => a.email.toLowerCase() === cleanEmail);
+    if (!exists) return { success: false, error: 'No account found with that email address.' };
+    return { success: true, demoReset: true };
+  };
+
+  // Signs the user in with the 6-digit code from the reset email, so they can
+  // then set a new password. Works even if the email link fails to open.
+  const verifyResetCode = async (
+    email: string,
+    code: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const token = code.replace(/\D/g, '');
+    if (token.length < 6) return { success: false, error: 'Enter the 6-digit code from the email.' };
+    if (!isSupabaseConfigured()) return { success: false, error: 'Reset codes need the live Supabase backend.' };
+    const { data, error } = await supabase.auth.verifyOtp({ email: cleanEmail, token, type: 'recovery' });
+    if (error || !data.session) {
+      return {
+        success: false,
+        error: /expired|invalid/i.test(error?.message || '')
+          ? 'That code is wrong or has expired. Check the latest email, or send a new code.'
+          : error?.message || 'Could not verify the code. Please try again.',
+      };
+    }
+    setUser({ id: data.session.user.id, email: data.session.user.email || cleanEmail });
+    return { success: true };
+  };
+
+  // Opens the emailed reset link. The link carries a token_hash that only this page
+  // exchanges for a session, so email scanners that pre-open links can't use it up.
+  const verifyResetLink = async (tokenHash: string): Promise<{ success: boolean; error?: string }> => {
+    if (!isSupabaseConfigured()) return { success: false, error: 'Reset links need the live Supabase backend.' };
+    const { data, error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' });
+    if (error || !data.session) {
+      return {
+        success: false,
+        error: /expired|invalid/i.test(error?.message || '')
+          ? 'This reset link has expired or was already used.'
+          : error?.message || 'This reset link could not be opened.',
+      };
+    }
+    setUser({ id: data.session.user.id, email: data.session.user.email || '' });
+    return { success: true };
+  };
+
+  const updatePassword = async (
+    newPassword: string,
+    demoEmail?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (isSupabaseConfigured()) {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    }
+    const cleanEmail = (demoEmail || '').trim().toLowerCase();
+    const accounts = mockStore.getAccounts();
+    if (!accounts.some(a => a.email.toLowerCase() === cleanEmail)) {
+      return { success: false, error: 'This reset link is invalid. Please request a new one.' };
+    }
+    mockStore.saveAccounts(
+      accounts.map(a => (a.email.toLowerCase() === cleanEmail ? { ...a, password: newPassword } : a))
+    );
+    return { success: true };
+  };
+
   const logout = async (): Promise<void> => {
     if (isSupabaseConfigured()) {
       try {
@@ -275,6 +391,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRole(null);
   };
 
+  // Updates the signed-in user's display name on screen after it was saved
+  // (the database write happens in useCateringData.updateProfileName).
+  const setOwnDisplayName = (name: string) => {
+    setProfile(prev => {
+      if (!prev) return prev;
+      const next = { ...prev, name };
+      if (!isSupabaseConfigured() && user) {
+        localStorage.setItem('caterpro_demo_session', JSON.stringify({ user, profile: next }));
+      }
+      return next;
+    });
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -285,6 +414,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         register,
         logout,
+        requestPasswordReset,
+        updatePassword,
+        verifyResetCode,
+        verifyResetLink,
+        setOwnDisplayName,
       }}
     >
       {children}

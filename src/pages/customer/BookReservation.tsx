@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Check,
@@ -21,6 +21,25 @@ import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { Badge } from '@/components/ui/Badge';
 import { ConfirmationModal } from '@/components/ui/Modal';
+import { Dialog } from '@/components/ui/Dialog';
+import { ReservationCalendar } from '@/components/ReservationCalendar';
+import { getThemeImage } from '@/lib/themeImages';
+import { isPlaceholderMenuImage } from '@/lib/mockData';
+import {
+  CourseKey,
+  MenuSelection,
+  describeAllowance,
+  firstIncompleteCourse,
+  getPackageMenuRules,
+  groupMenuByCourse,
+  groupSelectionForDisplay,
+  menuSelectionError,
+  offeredCourses,
+  requiredCount,
+  toMenuSelectionItems,
+} from '@/lib/menuCourses';
+import { fetchAvailability } from '@/hooks/useDateAvailability';
+import { DOUBLE_BOOKING_MESSAGE, isDateFullyBooked } from '@/lib/availability';
 import { useAuth } from '@/hooks/useAuth';
 import { useCateringData } from '@/hooks/useCateringData';
 import {
@@ -36,16 +55,20 @@ import {
 
 const STEPS = [
   { num: 1, label: 'Theme & Package' },
-  { num: 2, label: 'Rentals & Add-ons' },
-  { num: 3, label: 'Event Details' },
-  { num: 4, label: 'Review & Submit' },
+  { num: 2, label: 'Customize Menu' },
+  { num: 3, label: 'Rentals & Add-ons' },
+  { num: 4, label: 'Event Details' },
+  { num: 5, label: 'Review & Submit' },
 ];
+const MENU_STEP = 2;
+const DETAILS_STEP = 4;
+const REVIEW_STEP = STEPS.length;
 
 export function BookReservation() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const { themes, packages, rentals, createReservation } = useCateringData();
+  const { themes, packages, rentals, menuItems, categories, createReservation } = useCateringData();
 
   // Pre-fill from URL params if available
   const initialThemeId = searchParams.get('themeId') ? Number(searchParams.get('themeId')) : themes[0]?.id || 1;
@@ -54,16 +77,28 @@ export function BookReservation() {
   const [step, setStep] = useState<number>(1);
   const [themeId, setThemeId] = useState<number>(initialThemeId);
   const [packageId, setPackageId] = useState<number>(initialPkgId);
-  const [guestCount, setGuestCount] = useState<number>(MIN_GUEST_COUNT);
+  // Kept as text so the field can be cleared while typing (a number state forced a stuck "0").
+  const [guestInput, setGuestInput] = useState<string>(String(MIN_GUEST_COUNT));
+  const guestCount = guestInput === '' ? 0 : parseInt(guestInput, 10);
+  const [guestTouched, setGuestTouched] = useState(false);
+  const [paxPopup, setPaxPopup] = useState<string | null>(null);
+  const guestInputRef = useRef<HTMLInputElement>(null);
 
   // Rental quantities: { [rental_item_id]: quantity }
   const [selectedRentals, setSelectedRentals] = useState<Record<number, number>>({});
+
+  // Chosen dishes per course: { main: [9, 10, 14], ... }
+  const [menuSelection, setMenuSelection] = useState<MenuSelection>({});
 
   // Bookings must be placed at least one week before the event date.
   const minEventDate = getMinimumBookingDate();
 
   // Event details
-  const [eventDate, setEventDate] = useState<string>('');
+  // A date picked on the availability page arrives as ?date=YYYY-MM-DD.
+  const [eventDate, setEventDate] = useState<string>(() => {
+    const d = searchParams.get('date') || '';
+    return /^\d{4}-\d{2}-\d{2}$/.test(d) && isAtLeastOneWeekAhead(d) ? d : '';
+  });
   const [eventTime, setEventTime] = useState<string>('16:00');
   const [venueAddress, setVenueAddress] = useState<string>('');
   const [specialRequests, setSpecialRequests] = useState<string>('');
@@ -79,6 +114,12 @@ export function BookReservation() {
     if (errorMessage) errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [errorMessage]);
 
+  // The picked date was booked by someone else while this page was open.
+  const handleDateTaken = useCallback((key: string) => {
+    setEventDate(prev => (prev === key ? '' : prev));
+    setErrorMessage(DOUBLE_BOOKING_MESSAGE);
+  }, []);
+
   const goToStep = (n: number) => {
     setErrorMessage('');
     setStep(n);
@@ -86,10 +127,102 @@ export function BookReservation() {
 
   const selectedTheme = themes.find(t => t.id === themeId);
   const selectedPackage = packages.find(p => p.id === packageId);
+
+  // Menu customization: what this package allows, and the dishes per course.
+  const menuRules = useMemo(() => getPackageMenuRules(selectedPackage), [selectedPackage]);
+  const menuCourses = useMemo(() => offeredCourses(menuRules), [menuRules]);
+  const courseGroups = useMemo(() => groupMenuByCourse(menuItems, categories), [menuItems, categories]);
+  const menuError = menuSelectionError(menuRules, menuSelection, courseGroups);
+  const chosenMenu = useMemo(
+    () => toMenuSelectionItems(menuRules, menuSelection, menuItems),
+    [menuRules, menuSelection, menuItems]
+  );
+
+  // Switching package: keep picks that still fit the new allowance, drop the rest.
+  useEffect(() => {
+    setMenuSelection(prev => {
+      const next: MenuSelection = {};
+      for (const c of menuCourses) {
+        const kept = (prev[c.key] || []).slice(0, c.count);
+        if (kept.length) next[c.key] = kept;
+      }
+      return next;
+    });
+  }, [menuCourses]);
+
+  // Progress across all courses, for the summary bar.
+  const menuNeededTotal = menuCourses.reduce(
+    (sum, c) => sum + requiredCount(menuRules, c.key, courseGroups[c.key].length),
+    0
+  );
+  const menuPickedTotal = menuCourses.reduce((sum, c) => sum + (menuSelection[c.key] || []).length, 0);
+
+  // Course to point out after "Next" with an unfinished menu.
+  const [menuHighlight, setMenuHighlight] = useState<CourseKey | null>(null);
+
+  const scrollToCourse = (course: CourseKey) => {
+    const el = document.getElementById(`course-section-${course}`);
+    if (!el) return;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    // Some browsers skip or cancel smooth scrolling; make sure the course ends up in view.
+    window.setTimeout(() => {
+      const top = el.getBoundingClientRect().top;
+      if (top < 0 || top > window.innerHeight * 0.6) el.scrollIntoView({ block: 'start' });
+    }, 700);
+  };
+
+  // Show the first unfinished course instead of an error banner at the top of the page.
+  const pointToIncompleteCourse = () => {
+    const course = firstIncompleteCourse(menuRules, menuSelection, courseGroups);
+    if (!course) return;
+    setMenuHighlight(course);
+    window.setTimeout(() => scrollToCourse(course), 50);
+  };
+
+  const clearCourse = (course: CourseKey) => {
+    setMenuSelection(prev => {
+      const next = { ...prev };
+      delete next[course];
+      return next;
+    });
+  };
+
+  const toggleDish = (course: CourseKey, itemId: number, need: number) => {
+    setErrorMessage('');
+    setMenuSelection(prev => {
+      const current = prev[course] || [];
+      if (current.includes(itemId)) return { ...prev, [course]: current.filter(id => id !== itemId) };
+      // Choose-one courses work like a radio button: picking another swaps it.
+      if (need === 1) return { ...prev, [course]: [itemId] };
+      if (current.length >= need) return prev;
+      return { ...prev, [course]: [...current, itemId] };
+    });
+  };
   const minGuestCount = Math.min(
     MAX_GUEST_COUNT,
     Math.max(MIN_GUEST_COUNT, selectedPackage?.min_pax || MIN_GUEST_COUNT)
   );
+
+  const guestCountError =
+    guestInput === ''
+      ? 'Please enter the number of guests.'
+      : guestCount > MAX_GUEST_COUNT
+      ? `Guest count cannot exceed ${MAX_GUEST_COUNT} pax.`
+      : guestCount < minGuestCount
+      ? `${selectedPackage?.name || 'This package'} requires at least ${minGuestCount} pax.`
+      : '';
+
+  const handleGuestChange = (raw: string) => {
+    const digits = raw.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 4);
+    setGuestInput(digits);
+    setGuestTouched(true);
+    if (digits !== '' && parseInt(digits, 10) > MAX_GUEST_COUNT) {
+      setPaxPopup(
+        `We can cater a maximum of ${MAX_GUEST_COUNT} guests per event. You entered ${parseInt(digits, 10)} pax. Please lower the guest count.`
+      );
+    }
+  };
 
   // Financial Calculations
   const packageTotal = (selectedPackage?.price_per_pax || 0) * guestCount;
@@ -116,17 +249,36 @@ export function BookReservation() {
     });
   };
 
-  const handleNext = () => {
+  // Typed quantity: digits only, capped at available stock.
+  const setRentalQty = (rentalId: number, raw: string, stock: number) => {
+    const digits = raw.replace(/\D/g, '');
+    const next = digits === '' ? 0 : Math.min(stock, parseInt(digits, 10));
+    setSelectedRentals(prev => {
+      const copy = { ...prev };
+      if (next <= 0) delete copy[rentalId];
+      else copy[rentalId] = next;
+      return copy;
+    });
+  };
+
+  const handleNext = async () => {
     setErrorMessage('');
     if (step === 1) {
       if (!packageId) {
         setErrorMessage('Please select a catering package.');
         return;
       }
-      setStep(2);
-    } else if (step === 2) {
+      setStep(MENU_STEP);
+    } else if (step === MENU_STEP) {
+      if (menuError) {
+        pointToIncompleteCourse();
+        return;
+      }
+      setMenuHighlight(null);
       setStep(3);
     } else if (step === 3) {
+      setStep(DETAILS_STEP);
+    } else if (step === DETAILS_STEP) {
       if (!eventDate) {
         setErrorMessage('Please pick an event date.');
         return;
@@ -141,17 +293,25 @@ export function BookReservation() {
         setErrorMessage('Please specify the event venue address.');
         return;
       }
-      if (!isValidGuestCount(guestCount)) {
-        setErrorMessage(
-          `Guest count must be between ${MIN_GUEST_COUNT} and ${MAX_GUEST_COUNT} pax.`
+      try {
+        const latest = await fetchAvailability(eventDate, eventDate);
+        if (isDateFullyBooked(latest, eventDate)) {
+          setEventDate('');
+          setErrorMessage(DOUBLE_BOOKING_MESSAGE);
+          return;
+        }
+      } catch {
+        // Offline check failed; the save step re-checks and the database blocks overlaps.
+      }
+      if (guestCountError || !isValidGuestCount(guestCount)) {
+        setGuestTouched(true);
+        setPaxPopup(
+          guestCountError ||
+            `Guest count must be between ${MIN_GUEST_COUNT} and ${MAX_GUEST_COUNT} pax.`
         );
         return;
       }
-      if (guestCount < minGuestCount) {
-        setErrorMessage(`This package requires a minimum of ${minGuestCount} guests.`);
-        return;
-      }
-      setStep(4);
+      setStep(REVIEW_STEP);
     }
   };
 
@@ -161,25 +321,27 @@ export function BookReservation() {
       return;
     }
 
+    if (menuError) {
+      setStep(MENU_STEP);
+      pointToIncompleteCourse();
+      return;
+    }
+
     if (!isAtLeastOneWeekAhead(eventDate)) {
-      setStep(3);
+      setStep(DETAILS_STEP);
       setErrorMessage(
         'Reservations must be booked at least 1 week (7 days) before the event date. Please choose a later date.'
       );
       return;
     }
 
-    if (!isValidGuestCount(guestCount)) {
-      setStep(3);
-      setErrorMessage(
-        `Guest count must be between ${MIN_GUEST_COUNT} and ${MAX_GUEST_COUNT} pax.`
+    if (guestCountError || !isValidGuestCount(guestCount)) {
+      setStep(DETAILS_STEP);
+      setGuestTouched(true);
+      setPaxPopup(
+        guestCountError ||
+          `Guest count must be between ${MIN_GUEST_COUNT} and ${MAX_GUEST_COUNT} pax.`
       );
-      return;
-    }
-
-    if (guestCount < minGuestCount) {
-      setStep(3);
-      setErrorMessage(`This package requires a minimum of ${minGuestCount} guests.`);
       return;
     }
 
@@ -205,13 +367,19 @@ export function BookReservation() {
         special_requests: specialRequests,
         total_amount: grandTotal,
         rentals: rentalsList,
+        menu_selection: chosenMenu,
       });
 
       navigate('/customer/reservations', {
         state: { newBookingCode: res.booking_code },
       });
     } catch (err: any) {
-      setErrorMessage(err.message || 'Booking submission failed. Please try again.');
+      const message = err.message || 'Booking submission failed. Please try again.';
+      if (message === DOUBLE_BOOKING_MESSAGE) {
+        setEventDate('');
+        setStep(DETAILS_STEP);
+      }
+      setErrorMessage(message);
     } finally {
       setSubmitting(false);
     }
@@ -224,7 +392,7 @@ export function BookReservation() {
         <p className="mb-3 text-center text-xs font-semibold text-text-muted sm:hidden">
           Step {step} of {STEPS.length}: <span className="text-ink">{STEPS[step - 1].label}</span>
         </p>
-        <ol className="grid grid-cols-4 gap-2 text-center text-xs">
+        <ol className="grid grid-cols-5 gap-1 text-center text-xs sm:gap-2">
           {STEPS.map(s => {
             const isDone = step > s.num;
             const isCurrent = step === s.num;
@@ -291,12 +459,18 @@ export function BookReservation() {
                       key={t.id}
                       onClick={() => setThemeId(t.id)}
                       aria-pressed={themeId === t.id}
-                      className={`cursor-pointer rounded-lg border p-3 text-left transition-all ${
+                      className={`cursor-pointer overflow-hidden rounded-lg border p-3 text-left transition-all ${
                         themeId === t.id
                           ? 'border-gold bg-gold-light/40 shadow-sm ring-1 ring-gold'
                           : 'border-border bg-white hover:border-text-muted'
                       }`}
                     >
+                      <img
+                        src={getThemeImage(t)}
+                        alt=""
+                        className="-mx-3 -mt-3 mb-2.5 h-20 w-[calc(100%+1.5rem)] max-w-none object-cover"
+                        loading="lazy"
+                      />
                       <h4 className="font-serif text-sm font-bold text-ink">{t.name}</h4>
                       <p className="mt-1 text-[11px] text-text-muted line-clamp-1">{t.tagline}</p>
                     </button>
@@ -333,9 +507,14 @@ export function BookReservation() {
                           {formatCurrency(pkg.price_per_pax)}
                           <span className="text-xs font-sans font-normal text-text-muted"> / head</span>
                         </div>
-                        <p className="mt-3 text-xs text-text-muted leading-relaxed">
+                        <p className="mt-3 text-sm text-text-muted leading-relaxed">
                           {pkg.description}
                         </p>
+                        {describeAllowance(getPackageMenuRules(pkg)) && (
+                          <p className="mt-2 text-xs font-semibold text-gold-dark">
+                            You choose: {describeAllowance(getPackageMenuRules(pkg))}
+                          </p>
+                        )}
                       </div>
                       <div className="mt-4 pt-3 border-t border-border flex items-center justify-end">
                         <span
@@ -355,11 +534,228 @@ export function BookReservation() {
         </div>
       )}
 
-      {/* Step 2: Rentals & Equipment Add-ons */}
+      {/* Step 2: Customize Menu */}
       {step === 2 && (
         <Card>
           <CardHeader>
-            <CardTitle>Step 2: Add Banquet Furniture & Equipment Rentals</CardTitle>
+            <CardTitle>Step 2: Customize Your Menu</CardTitle>
+            <p className="text-xs text-text-muted">
+              Choose your dishes for <span className="font-semibold text-ink">{selectedPackage?.name}</span>. Tap a dish to
+              add or remove it.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {menuCourses.length === 0 && (
+              <p className="rounded-lg border border-border bg-cream/40 p-4 text-sm text-text-muted">
+                This package has a fixed menu, so there's nothing to choose. Continue to the next step.
+              </p>
+            )}
+
+            {/* Progress summary: stays visible while scrolling; chips jump to a course. */}
+            {menuCourses.length > 0 && (
+              <div className="sticky -top-4 z-20 -mx-4 border-b border-border bg-white px-4 py-3 shadow-sm sm:-top-6 sm:-mx-6 sm:px-6 lg:-top-8">
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <span className="font-semibold text-ink" aria-live="polite">
+                    {menuPickedTotal} of {menuNeededTotal} dishes chosen
+                  </span>
+                  {menuPickedTotal === menuNeededTotal ? (
+                    <span className="inline-flex items-center gap-1 font-semibold text-emerald-700">
+                      <Check className="h-3.5 w-3.5" aria-hidden="true" /> Menu complete
+                    </span>
+                  ) : (
+                    <span className="text-text-muted">{menuNeededTotal - menuPickedTotal} left</span>
+                  )}
+                </div>
+                <div
+                  className="mt-2 h-1.5 overflow-hidden rounded-full bg-cream-dark"
+                  role="progressbar"
+                  aria-label="Menu progress"
+                  aria-valuemin={0}
+                  aria-valuemax={menuNeededTotal}
+                  aria-valuenow={menuPickedTotal}
+                >
+                  <div
+                    className="h-full rounded-full bg-gold transition-all duration-300"
+                    style={{ width: `${menuNeededTotal ? (menuPickedTotal / menuNeededTotal) * 100 : 100}%` }}
+                  />
+                </div>
+                <nav
+                  aria-label="Jump to course"
+                  className="mt-2.5 flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                >
+                  {menuCourses.map(c => {
+                    const need = requiredCount(menuRules, c.key, courseGroups[c.key].length);
+                    const got = (menuSelection[c.key] || []).length;
+                    const done = got === need;
+                    return (
+                      <button
+                        key={c.key}
+                        type="button"
+                        onClick={() => scrollToCourse(c.key)}
+                        className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                          done
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                            : 'border-border bg-white text-text-muted hover:border-gold'
+                        }`}
+                      >
+                        {done && <Check className="h-3 w-3" aria-hidden="true" />}
+                        {c.label} {got}/{need}
+                      </button>
+                    );
+                  })}
+                </nav>
+              </div>
+            )}
+
+            {menuCourses.length > 0 && (
+              <p className="text-xs text-text-muted">
+                Tap a dish to add it, and tap it again to remove it. For courses where you pick one, tapping another dish
+                swaps it.
+              </p>
+            )}
+
+            {menuCourses.map(course => {
+              const options = courseGroups[course.key];
+              const picked = menuSelection[course.key] || [];
+              const need = requiredCount(menuRules, course.key, options.length);
+              const full = picked.length >= need;
+              const done = picked.length === need;
+              const highlighted = menuHighlight === course.key && !done;
+              const pickedNames = options.filter(i => picked.includes(i.id)).map(i => i.name);
+              return (
+                <section
+                  key={course.key}
+                  id={`course-section-${course.key}`}
+                  aria-labelledby={`course-${course.key}`}
+                  className={`scroll-mt-36 rounded-xl border p-3 transition-colors sm:p-4 ${
+                    highlighted ? 'border-red-300 bg-red-50/40 ring-2 ring-red-200' : 'border-transparent'
+                  }`}
+                >
+                  <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                    <h3 id={`course-${course.key}`} className="font-serif text-base font-bold text-ink">
+                      {course.label}
+                      <span className="ml-2 align-middle text-xs font-sans font-semibold text-text-muted">
+                        Choose {need}
+                      </span>
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={done ? 'completed' : 'default'}>
+                        {done && <Check className="mr-1 h-3 w-3" aria-hidden="true" />}
+                        {picked.length}/{need}
+                      </Badge>
+                      {picked.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => clearCourse(course.key)}
+                          className="text-xs font-semibold text-text-muted underline-offset-2 hover:text-ink hover:underline"
+                          aria-label={`Clear ${course.label} choices`}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* What's chosen so far (no need to scan the cards). */}
+                  <p className="mb-3 min-h-[1rem] text-xs text-text-muted" aria-live="polite">
+                    {pickedNames.length > 0 ? (
+                      <>
+                        <span className="font-semibold text-text">Chosen:</span> {pickedNames.join(', ')}
+                      </>
+                    ) : (
+                      'Nothing chosen yet.'
+                    )}
+                  </p>
+
+                  {highlighted && (
+                    <p role="alert" className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-red-700">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      Choose {need - picked.length} more {need - picked.length === 1 ? course.one : course.many} to continue.
+                    </p>
+                  )}
+
+                  {full && need > 1 && (
+                    <p className="mb-3 text-[11px] text-text-faint">
+                      All {need} chosen. Tap a chosen dish to remove it if you want to swap.
+                    </p>
+                  )}
+
+                  {options.length === 0 ? (
+                    <p className="text-xs text-text-muted">No dishes are available for this course right now.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2" role="group" aria-label={`${course.label} choices`}>
+                      {options.map(item => {
+                        const isPicked = picked.includes(item.id);
+                        const disabled = !isPicked && full && need > 1;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => toggleDish(course.key, item.id, need)}
+                            aria-pressed={isPicked}
+                            disabled={disabled}
+                            title={disabled ? `You've chosen ${need}. Remove one to pick this.` : undefined}
+                            className={`flex items-center gap-3 rounded-lg border p-2.5 text-left transition-all ${
+                              isPicked
+                                ? 'border-gold bg-gold-light/40 ring-1 ring-gold'
+                                : 'border-border bg-white hover:border-gold/60'
+                            } disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-border`}
+                          >
+                            {/* Only real food photos help people recognise a dish; skip the stand-in event photos. */}
+                            {!isPlaceholderMenuImage(item.image_url) && (
+                              <img
+                                src={item.image_url!}
+                                alt=""
+                                className="h-14 w-14 shrink-0 rounded-md object-cover"
+                                loading="lazy"
+                              />
+                            )}
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-sm font-semibold text-ink">{item.name}</span>
+                              {item.description && (
+                                <span className="mt-0.5 block text-xs leading-relaxed text-text-muted line-clamp-2">
+                                  {item.description}
+                                </span>
+                              )}
+                            </span>
+                            <span
+                              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                                isPicked ? 'border-gold bg-gold text-white' : 'border-border bg-white'
+                              }`}
+                              aria-hidden="true"
+                            >
+                              {isPicked && <Check className="h-3 w-3" />}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+
+            {(menuRules.included || []).length > 0 && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-emerald-800">Also included</p>
+                <ul className="mt-2 space-y-1">
+                  {(menuRules.included || []).map(inc => (
+                    <li key={inc} className="flex items-center gap-2 text-sm text-emerald-900">
+                      <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {inc}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Step 3: Rentals & Equipment Add-ons */}
+      {step === 3 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Step 3: Add Banquet Furniture & Equipment Rentals</CardTitle>
             <p className="text-xs text-text-muted">
               Enhance your venue with gold Tiffany chairs, chafing warmers, sound systems, and linens.
             </p>
@@ -378,6 +774,7 @@ export function BookReservation() {
                       <p className="text-xs text-text-muted">
                         {formatCurrency(rental.rate_per_unit)} / piece
                       </p>
+                      <p className="text-[11px] text-text-faint">{rental.stock_quantity} available</p>
                     </div>
 
                     <div className="flex shrink-0 items-center gap-1.5">
@@ -390,9 +787,17 @@ export function BookReservation() {
                       >
                         <Minus className="h-3.5 w-3.5" />
                       </button>
-                      <span className="w-8 text-center text-sm font-bold text-ink" aria-live="polite" aria-label={`${qty} selected`}>
-                        {qty}
-                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={qty === 0 ? '' : String(qty)}
+                        placeholder="0"
+                        onChange={e => setRentalQty(rental.id, e.target.value, rental.stock_quantity)}
+                        onFocus={e => e.target.select()}
+                        aria-label={`Quantity of ${rental.name} (max ${rental.stock_quantity})`}
+                        className="h-9 w-14 rounded-md border border-border bg-white text-center text-sm font-bold text-ink placeholder:text-text-faint focus-visible:border-gold focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold sm:h-8"
+                      />
                       <button
                         type="button"
                         onClick={() => updateRentalQty(rental.id, 1)}
@@ -417,32 +822,42 @@ export function BookReservation() {
         </Card>
       )}
 
-      {/* Step 3: Event Details */}
-      {step === 3 && (
+      {/* Step 4: Event Details */}
+      {step === 4 && (
         <Card>
           <CardHeader>
-            <CardTitle>Step 3: Event Schedule & Venue Information</CardTitle>
+            <CardTitle>Step 4: Event Schedule & Venue Information</CardTitle>
             <p className="text-xs text-text-muted">
               Enter the date, call time, venue address, and guest headcount.
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div>
-                <label htmlFor="event-date" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
+            <div>
+              <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-2">
+                <span id="event-date-label" className="block text-xs font-bold uppercase tracking-wider text-text-muted">
                   Event Date
-                </label>
-                <Input id="event-date"
-                  type="date"
-                  required
-                  min={minEventDate}
-                  value={eventDate}
-                  onChange={e => setEventDate(e.target.value)}
-                />
-                <span className="mt-1 block text-[11px] text-text-muted">
-                  Must be at least 1 week (7 days) from today.
+                </span>
+                <span className="text-xs font-semibold text-ink" aria-live="polite">
+                  {eventDate ? `Selected: ${formatDate(eventDate)}` : 'No date selected'}
                 </span>
               </div>
+              <ReservationCalendar
+                mode="select"
+                value={eventDate}
+                onSelect={key => {
+                  setEventDate(key);
+                  setErrorMessage('');
+                }}
+                onSelectedDateTaken={handleDateTaken}
+                minBookableKey={minEventDate}
+                initialMonthKey={eventDate || minEventDate}
+              />
+              <span className="mt-1.5 block text-[11px] text-text-muted">
+                Availability updates live. Dates must be at least 1 week (7 days) from today, and we cater one event per day.
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 
               <div>
                 <label htmlFor="event-time" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
@@ -461,17 +876,33 @@ export function BookReservation() {
                   Guest Count (Pax)
                 </label>
                 <Input id="guest-count"
-                  type="number"
+                  ref={guestInputRef}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoComplete="off"
                   required
-                  min={minGuestCount}
-                  max={MAX_GUEST_COUNT}
-                  step={1}
-                  value={guestCount}
-                  onChange={e => setGuestCount(Number(e.target.value))}
+                  value={guestInput}
+                  onChange={e => handleGuestChange(e.target.value)}
+                  onBlur={() => setGuestTouched(true)}
+                  placeholder={`${minGuestCount}–${MAX_GUEST_COUNT}`}
+                  aria-invalid={guestTouched && !!guestCountError}
+                  aria-describedby="guest-count-help"
+                  className={
+                    guestTouched && guestCountError
+                      ? 'border-red-500 ring-2 ring-red-500/40 focus-visible:border-red-500 focus-visible:ring-red-500'
+                      : undefined
+                  }
                 />
-                <span className="text-[11px] text-text-muted">
-                  Guest count must be between {minGuestCount} and {MAX_GUEST_COUNT} pax
-                  {selectedPackage ? ` for ${selectedPackage.name}` : ''}.
+                <span
+                  id="guest-count-help"
+                  className={`mt-1 block text-[11px] ${guestTouched && guestCountError ? 'font-semibold text-red-600' : 'text-text-muted'}`}
+                >
+                  {guestTouched && guestCountError
+                    ? guestCountError
+                    : `Guest count must be between ${minGuestCount} and ${MAX_GUEST_COUNT} pax${
+                        selectedPackage ? ` for ${selectedPackage.name}` : ''
+                      }.`}
                 </span>
               </div>
             </div>
@@ -503,11 +934,11 @@ export function BookReservation() {
         </Card>
       )}
 
-      {/* Step 4: Review & Live Quote Summary */}
-      {step === 4 && (
+      {/* Step 5: Review & Live Quote Summary */}
+      {step === 5 && (
         <Card>
           <CardHeader>
-            <CardTitle>Step 4: Review Booking Summary & Contract</CardTitle>
+            <CardTitle>Step 5: Review Booking Summary & Contract</CardTitle>
             <p className="text-xs text-text-muted">
               Verify your booking details before submitting for management confirmation.
             </p>
@@ -549,6 +980,36 @@ export function BookReservation() {
                 )}
               </div>
             </div>
+
+            {/* Chosen menu */}
+            {(chosenMenu.length > 0 || (menuRules.included || []).length > 0) && (
+              <div className="rounded-lg border border-border p-4 bg-cream/40 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold uppercase text-text-muted">Your Menu</span>
+                  <button
+                    type="button"
+                    onClick={() => goToStep(MENU_STEP)}
+                    className="text-xs font-semibold text-gold hover:underline"
+                  >
+                    Change
+                  </button>
+                </div>
+                <dl className="mt-2 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+                  {groupSelectionForDisplay(chosenMenu).map(g => (
+                    <div key={g.label}>
+                      <dt className="font-semibold text-ink">{g.label}</dt>
+                      <dd className="text-sm text-text">{g.names.join(', ')}</dd>
+                    </div>
+                  ))}
+                  {(menuRules.included || []).length > 0 && (
+                    <div>
+                      <dt className="font-semibold text-ink">Included</dt>
+                      <dd className="text-sm text-text">{(menuRules.included || []).join(', ')}</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+            )}
 
             {/* Financial Contract Box */}
             <div className="rounded-xl bg-ink p-4 text-white space-y-3 sm:p-6">
@@ -597,7 +1058,7 @@ export function BookReservation() {
           <div className="hidden sm:block" />
         )}
 
-        {step < 4 ? (
+        {step < REVIEW_STEP ? (
           <Button type="button" variant="gold" onClick={handleNext} className="h-11 gap-1.5 text-sm sm:h-10 sm:text-xs">
             Next Step <ChevronRight className="h-4 w-4" />
           </Button>
@@ -613,6 +1074,40 @@ export function BookReservation() {
           </Button>
         )}
       </div>
+
+      <Dialog
+        open={paxPopup !== null}
+        onOpenChange={open => {
+          if (!open) {
+            setPaxPopup(null);
+            window.setTimeout(() => guestInputRef.current?.focus(), 0);
+          }
+        }}
+        className="max-w-md"
+      >
+        <div className="flex flex-col items-center text-center" role="alertdialog" aria-labelledby="pax-popup-title">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
+            <Users className="h-7 w-7 text-red-600" aria-hidden="true" />
+          </div>
+          <h3 id="pax-popup-title" className="mt-4 font-serif text-lg font-bold text-ink">
+            Invalid Guest Count
+          </h3>
+          <p className="mt-2 text-sm leading-relaxed text-text-muted">{paxPopup}</p>
+          <p className="mt-1 text-xs font-semibold text-ink">
+            Allowed: {minGuestCount}–{MAX_GUEST_COUNT} pax
+          </p>
+          <Button
+            variant="gold"
+            className="mt-6 w-full"
+            onClick={() => {
+              setPaxPopup(null);
+              window.setTimeout(() => guestInputRef.current?.focus(), 0);
+            }}
+          >
+            OK, I'll fix it
+          </Button>
+        </div>
+      </Dialog>
 
       <ConfirmationModal
         open={showConfirm}

@@ -1,11 +1,15 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Printer } from 'lucide-react';
+import { Mail, Printer } from 'lucide-react';
+import { useToast } from '@/components/ui/Toast';
+import { emailReceipt } from '@/lib/receiptEmail';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { Dialog } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
 import { PAYMENT_METHOD_LABELS, PAYMENT_TYPE_LABELS } from '@/lib/paymentLabels';
 import { Payment, Reservation } from '@/types/database';
+import { receiptSummary } from '@/lib/receiptMath';
 
 const BUSINESS_NAME = "Natalie's Catering";
 const BUSINESS_ADDRESS = '616, 617 Marinig, Cabuyao City, Laguna';
@@ -53,18 +57,11 @@ function ReceiptDocument({
   themeName?: string | null;
   reservationPayments?: Payment[];
 }) {
-  const verifiedTotal = (reservationPayments && reservationPayments.length > 0
-    ? reservationPayments
-    : payment.status === 'verified'
-      ? [payment]
-      : []
-  )
-    .filter(p => p.status === 'verified')
-    .reduce((sum, p) => sum + p.amount, 0);
-
-  const contractTotal = reservation?.total_amount ?? 0;
-  const outstandingBalance = Math.max(0, contractTotal - verifiedTotal);
+  // Totals as of THIS payment: later payments belong on their own receipts.
+  const summary = receiptSummary(payment, reservationPayments || [], reservation?.total_amount ?? 0);
   const isVerified = payment.status === 'verified';
+  const notCountedLabel =
+    payment.status === 'rejected' ? 'rejected, not counted' : 'pending verification, not counted yet';
 
   const receiptNumber = getReceiptNumber(payment);
   const receiptName = getReceiptName(payment, customerName);
@@ -214,27 +211,56 @@ function ReceiptDocument({
         </tbody>
       </table>
 
-      <div className="mt-4 ml-auto w-full max-w-xs space-y-1.5 text-xs">
-        <div className="flex justify-between">
-          <span className="text-text-muted">Total Contract Value</span>
-          <span className="font-semibold text-ink">{formatCurrency(contractTotal)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-text-muted">Total Verified Payments</span>
-          <span className="font-semibold text-emerald-700">{formatCurrency(verifiedTotal)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-text-muted">Outstanding Balance</span>
-          <span className="font-semibold text-ink">{formatCurrency(outstandingBalance)}</span>
-        </div>
-        <div className="flex items-center justify-between border-t-2 border-ink pt-2">
+      <div className="mt-4 ml-auto w-full max-w-sm text-xs">
+        <div className="flex items-center justify-between border-b-2 border-ink pb-2">
           <span className="font-bold uppercase tracking-wider text-ink">
             {isVerified ? 'Amount Received' : 'Amount Submitted'}
           </span>
-          <span className="text-base font-bold text-gold-dark">
-            {formatCurrency(payment.amount)}
-          </span>
+          <span className="text-base font-bold text-gold-dark">{formatCurrency(summary.thisAmount)}</span>
         </div>
+
+        <p className="mt-3 text-[9px] font-bold uppercase tracking-wider text-text-muted">
+          Booking balance as of this payment
+        </p>
+        <div className="mt-1.5 space-y-1.5">
+          <div className="flex justify-between gap-4">
+            <span className="text-text-muted">Total Contract Value</span>
+            <span className="font-semibold text-ink">{formatCurrency(summary.contractTotal)}</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span className="text-text-muted">Less: Paid Before This Payment</span>
+            <span className="font-semibold text-ink">− {formatCurrency(summary.paidBefore)}</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span className="text-text-muted">
+              Less: This Payment
+              {!summary.thisCounted && <span className="block text-[10px] italic">({notCountedLabel})</span>}
+            </span>
+            <span className={`font-semibold ${summary.thisCounted ? 'text-emerald-700' : 'text-text-faint line-through'}`}>
+              − {formatCurrency(summary.thisAmount)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-4 border-t border-border pt-1.5">
+            <span className="font-bold text-ink">Remaining Balance</span>
+            <span className="text-sm font-bold text-ink">
+              {formatCurrency(summary.balanceAfter)}
+              {summary.balanceAfter === 0 && summary.contractTotal > 0 && (
+                <span className="ml-1.5 rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-700">
+                  Fully paid
+                </span>
+              )}
+            </span>
+          </div>
+          {summary.overpaid > 0 && (
+            <div className="flex justify-between gap-4 text-amber-700">
+              <span>Overpayment (to be refunded or credited)</span>
+              <span className="font-semibold">{formatCurrency(summary.overpaid)}</span>
+            </div>
+          )}
+        </div>
+        <p className="mt-2 text-[10px] leading-relaxed text-text-faint">
+          Amounts are as of {formatDate(payment.paid_at)}. Payments made after this date have their own receipts.
+        </p>
       </div>
 
       <p
@@ -304,6 +330,22 @@ export function PaymentReceiptDialog({
     };
   }, [open, payment, customerName]);
 
+  const { toast } = useToast();
+  const [emailing, setEmailing] = useState(false);
+
+  const handleEmail = async () => {
+    if (!payment) return;
+    setEmailing(true);
+    try {
+      const to = await emailReceipt(payment.id);
+      toast({ title: 'Receipt emailed', description: `Sent to ${to}.` });
+    } catch (err: any) {
+      toast({ tone: 'error', title: 'Receipt email not sent', description: err?.message });
+    } finally {
+      setEmailing(false);
+    }
+  };
+
   if (!payment) return null;
 
   return (
@@ -319,6 +361,11 @@ export function PaymentReceiptDialog({
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             Close
           </Button>
+          {isSupabaseConfigured() && (
+            <Button variant="outline" size="sm" onClick={handleEmail} disabled={emailing} className="gap-1.5">
+              <Mail className="h-4 w-4" /> {emailing ? 'Sending…' : 'Email Receipt'}
+            </Button>
+          )}
           <Button variant="gold" size="sm" onClick={() => window.print()} className="gap-1.5">
             <Printer className="h-4 w-4" /> Print / Save as PDF
           </Button>

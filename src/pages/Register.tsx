@@ -8,7 +8,8 @@ import { AlertCircle } from 'lucide-react';
 import logo from '/public/images/natalielogo.jpg';
 
 export function Register() {
-  const [name, setName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [firstName, setFirstName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,21 +25,28 @@ export function Register() {
     setError('');
     setSuccessMessage('');
 
-    // Name Validation
-    if (!name.trim() || name.trim().length < 2) {
-      setError('Please provide a valid full name (at least 2 characters).');
+    // Name Validation (Last name, First name)
+    const namePattern = /^\p{L}[\p{L}\s.'-]*$/u;
+    const cleanLast = lastName.trim().replace(/\s+/g, ' ');
+    const cleanFirst = firstName.trim().replace(/\s+/g, ' ');
+    if (cleanLast.length < 2 || !namePattern.test(cleanLast)) {
+      setError('Please provide a valid last name (at least 2 letters).');
       return;
     }
+    if (cleanFirst.length < 2 || !namePattern.test(cleanFirst)) {
+      setError('Please provide a valid first name (at least 2 letters).');
+      return;
+    }
+    // Stored as "Last, First" so it reads the same everywhere it is shown.
+    const name = `${cleanLast}, ${cleanFirst}`;
 
-    // Phone Number Validation
-    const phoneNumberPattern = /^09\d{2}-\d{3}-\d{4}$/;
-
-    if (!phone.trim()) {
+    // Phone Number Validation: 11 digits, numbers only (e.g. 09181234567)
+    if (!phone) {
       setError('Please provide a contact number.');
       return;
     }
-    if (!phoneNumberPattern.test(phone.trim())) {
-      setError('Please provide a valid phone number in the format: 09XX-XXX-XXXX.');
+    if (!/^09\d{9}$/.test(phone)) {
+      setError('Please provide a valid 11-digit mobile number starting with 09 (e.g. 09181234567).');
       return;
     }
 
@@ -101,7 +109,7 @@ export function Register() {
         </div>
 
         <div className="text-xs text-cream/60">
-          © {new Date().getFullYear()} Natalie's Catering System. Capstone Defense Demo.
+          © {new Date().getFullYear()} Natalie's Catering System.
         </div>
       </div>
 
@@ -138,17 +146,33 @@ export function Register() {
           )}
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            <div>
-              <label htmlFor="reg-full-name" className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
-                Full Name
-              </label>
-              <Input id="reg-full-name"
-                type="text"
-                required
-                value={name}
-                onChange={e => setName(e.target.value)}
-                placeholder="e.g. Maria Santos"
-              />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="reg-last-name" className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
+                  Last Name
+                </label>
+                <Input id="reg-last-name"
+                  type="text"
+                  required
+                  autoComplete="family-name"
+                  value={lastName}
+                  onChange={e => setLastName(e.target.value)}
+                  placeholder="e.g. Santos"
+                />
+              </div>
+              <div>
+                <label htmlFor="reg-first-name" className="block text-xs font-semibold uppercase tracking-wider text-text-muted mb-1.5">
+                  First Name
+                </label>
+                <Input id="reg-first-name"
+                  type="text"
+                  required
+                  autoComplete="given-name"
+                  value={firstName}
+                  onChange={e => setFirstName(e.target.value)}
+                  placeholder="e.g. Maria"
+                />
+              </div>
             </div>
 
             <div>
@@ -157,11 +181,16 @@ export function Register() {
               </label>
               <Input id="reg-contact-phone"
                 type="tel"
+                inputMode="numeric"
+                autoComplete="tel"
                 required
+                maxLength={11}
                 value={phone}
-                onChange={e => setPhone(e.target.value)}
-                placeholder="0918-123-4567"
+                // Numbers only: hyphens, spaces and other characters are stripped as you type or paste.
+                onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                placeholder="09181234567"
               />
+              <span className="mt-1 block text-[11px] text-text-muted">11 digits, numbers only (no hyphens).</span>
             </div>
 
             <div>

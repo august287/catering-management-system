@@ -10,14 +10,18 @@ import {
   BarChart3,
   BookOpen,
   CalendarPlus,
+  CalendarRange,
+  CalendarSearch,
   Clock,
   LogOut,
   Utensils,
   ShieldCheck,
   User,
   X,
+  UserCog,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { isAdminRole, ROLE_LABELS } from '@/types/database';
 import { useCateringData } from '@/hooks/useCateringData';
 import { cn } from '@/lib/utils';
 import { LogoutModal } from '@/components/ui/Modal';
@@ -43,7 +47,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pendingReservationsCount = reservations.filter(r => r.status === 'pending').length;
   const pendingPaymentsCount = payments.filter(p => p.status === 'pending_verification').length;
   const unreadNotificationsCount = notifications.filter(
-    n => !n.is_read && (role === 'admin' ? (n.user_id === profile?.id || n.user_id === '00000000-0000-0000-0000-000000000001') : (profile?.id ? n.user_id === profile.id : false))
+    n => !n.is_read && (isAdminRole(role) ? (n.user_id === profile?.id || n.user_id === '00000000-0000-0000-0000-000000000001') : (profile?.id ? n.user_id === profile.id : false))
   ).length;
   const notifBadge = unreadNotificationsCount > 0 ? unreadNotificationsCount : undefined;
 
@@ -64,6 +68,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       icon: CalendarDays,
       badge: pendingReservationsCount > 0 ? pendingReservationsCount : undefined,
     },
+    { to: '/admin/calendar', label: 'Event Calendar', icon: CalendarRange },
     { to: '/admin/customers', label: 'Customers', icon: Users },
     {
       to: '/admin/payments',
@@ -75,15 +80,21 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     { to: '/admin/notifications', label: 'Notifications', icon: Bell, badge: notifBadge },
   ];
 
+  // Only super admins can manage user accounts and roles.
+  if (role === 'super_admin') {
+    adminNav.push({ to: '/admin/users', label: 'User Management', icon: UserCog });
+  }
+
   const customerNav: NavItem[] = [
     { to: '/customer/menu', label: 'Browse Menu', icon: BookOpen },
+    { to: '/customer/availability', label: 'Check Availability', icon: CalendarSearch },
     { to: '/customer/book', label: 'Book Reservation', icon: CalendarPlus },
     { to: '/customer/reservations', label: 'My Reservations', icon: Clock },
     { to: '/customer/payments', label: 'Payments', icon: CreditCard },
     { to: '/customer/notifications', label: 'Notifications', icon: Bell, badge: notifBadge },
   ];
 
-  const navItems = role === 'admin' ? adminNav : customerNav;
+  const navItems = isAdminRole(role) ? adminNav : customerNav;
 
   const handleLogoutConfirm = async () => {
     await logout();
@@ -135,13 +146,17 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         {/* Role Pill Indicator */}
         <div className="px-6 py-3 border-b border-ink-muted/20">
           <div className="flex items-center gap-2 rounded-md bg-ink-soft px-3 py-1.5 text-xs text-gold-light">
-            {role === 'admin' ? (
+            {isAdminRole(role) ? (
               <ShieldCheck className="h-3.5 w-3.5 text-gold" />
             ) : (
               <User className="h-3.5 w-3.5 text-gold" />
             )}
             <span className="capitalize font-semibold tracking-wide">
-              {role === 'admin' ? 'Administrator Portal' : 'Customer Portal'}
+              {role === 'super_admin'
+                ? 'Super Admin Portal'
+                : role === 'admin'
+                  ? 'Administrator Portal'
+                  : 'Customer Portal'}
             </span>
           </div>
         </div>
@@ -190,7 +205,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               </div>
               <div className="truncate">
                 <p className="truncate text-xs font-semibold text-white">{profile?.name || 'User'}</p>
-                <p className="truncate text-[11px] text-cream/60 capitalize">{role}</p>
+                <p className="truncate text-[11px] text-cream/60">{role ? ROLE_LABELS[role] : ''}</p>
               </div>
             </div>
             <button

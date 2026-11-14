@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--", "--open=false"],
       "port": 3000
+    },
+    {
+      "name": "catering-demo",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--open=false", "--mode", "demo", "--port", "3001", "--strictPort"],
+      "port": 3001
     }
   ]
 }

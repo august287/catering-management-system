@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Eye, Calendar, MapPin, Users, Utensils } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { ChosenMenu } from '@/components/ChosenMenu';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Dialog } from '@/components/ui/Dialog';
@@ -337,11 +338,13 @@ export function Reservations() {
               <p className="font-semibold text-text">{selectedPackage?.name}</p>
               <p className="text-text-muted leading-relaxed">{selectedPackage?.description}</p>
 
+              <ChosenMenu items={selectedRes.menu_selection} />
+
               {/* Special Requests */}
               {selectedRes.special_requests && (
                 <div className="pt-2 border-t border-border">
                   <span className="font-bold text-text-muted uppercase">Special Notes / Dietary:</span>
-                  <p className="mt-0.5 text-text italic">"{selectedRes.special_requests}"</p>
+                  <p className="mt-0.5 whitespace-pre-line text-text italic">"{selectedRes.special_requests}"</p>
                 </div>
               )}
             </div>

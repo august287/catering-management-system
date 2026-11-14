@@ -1,4 +1,27 @@
-export type UserRole = 'admin' | 'customer';
+export type UserRole = 'super_admin' | 'admin' | 'customer';
+
+/** True for any role that can use the admin portal. */
+export const isAdminRole = (role?: string | null): boolean =>
+  role === 'admin' || role === 'super_admin';
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  super_admin: 'Super Admin',
+  admin: 'Admin',
+  customer: 'Customer',
+};
+
+export const CUSTOMER_PROMOTION_ERROR = 'Customer accounts cannot be promoted to Admin or Super Admin.';
+
+/**
+ * Returns why a role change isn't allowed, or null if it is.
+ * Customers can never become staff (admin or super admin) from the app.
+ * Keep in sync with prevent_profile_role_change() in the database.
+ */
+export function roleChangeError(from: UserRole, to: UserRole): string | null {
+  if (from === to) return null;
+  if (from === 'customer' && isAdminRole(to)) return CUSTOMER_PROMOTION_ERROR;
+  return null;
+}
 
 export type ReservationStatus =
   | 'pending'
@@ -64,7 +87,21 @@ export interface Package {
   price_per_pax: number;
   min_pax: number;
   theme_id?: number | null;
+  /**
+   * How many dishes per course the customer chooses, e.g.
+   * { counts: { main: 3, appetizer: 1 }, included: ['Bottomless Iced Tea'] }.
+   * See src/lib/menuCourses.ts. Null = use the tier's built-in default.
+   */
+  menu_rules?: { counts: Record<string, number>; included?: string[] } | null;
   created_at?: string;
+}
+
+/** One dish the customer chose for their event. */
+export interface MenuSelectionItem {
+  course: string;
+  item_id: number;
+  /** Dish name at booking time, kept even if the dish is renamed or removed later. */
+  name: string;
 }
 
 export interface RentalItem {
@@ -96,6 +133,8 @@ export interface Reservation {
   venue_address: string;
   guest_count: number;
   special_requests?: string | null;
+  /** Dishes the customer chose within their package allowance. */
+  menu_selection?: MenuSelectionItem[] | null;
   total_amount: number;
   status: ReservationStatus;
   created_at: string;

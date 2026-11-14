@@ -1,5 +1,5 @@
 -- ==============================================================================
--- Migration: 011_remove_corporate_lite_package.sql
+-- Migration: 019_remove_corporate_lite_package.sql
 -- Removes the "Corporate Lite Executive" package. It is not one of the client's
 -- actual offerings (Package A / B / C).
 --

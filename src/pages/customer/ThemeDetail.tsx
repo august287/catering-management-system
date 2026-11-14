@@ -1,18 +1,28 @@
-import React from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, CalendarPlus, Sparkles, Utensils, Users } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/Card';
+import React, { useEffect, useState } from 'react';
+import { useParams, Link, useNavigate, Navigate } from 'react-router-dom';
+import { ArrowLeft, Check, CalendarPlus, Sparkles } from 'lucide-react';
+import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useCateringData } from '@/hooks/useCateringData';
-import { formatCurrency, MIN_GUEST_COUNT, MAX_GUEST_COUNT } from '@/lib/utils';
+import { formatCurrency, MIN_GUEST_COUNT, MAX_GUEST_COUNT, cn } from '@/lib/utils';
+import { findThemeBySlug, getThemeImages, slugify, themePath } from '@/lib/themeImages';
 
 export function ThemeDetail() {
-  const { themeId } = useParams<{ themeId: string }>();
+  const { themeSlug } = useParams<{ themeSlug: string }>();
   const navigate = useNavigate();
   const { themes, packages } = useCateringData();
+  const [activeImage, setActiveImage] = useState(0);
 
-  const theme = themes.find(t => t.id === Number(themeId));
+  const theme = findThemeBySlug(themes, themeSlug);
+
+  // Start from the cover photo when switching themes.
+  useEffect(() => setActiveImage(0), [themeSlug]);
+
+  // Old links used the numeric id; send them to the name-based URL.
+  if (theme && themeSlug !== slugify(theme.name)) {
+    return <Navigate to={themePath(theme)} replace />;
+  }
 
   if (!theme) {
     return (
@@ -30,8 +40,11 @@ export function ThemeDetail() {
 
   // Associated packages or universal packages
   const matchingPackages = packages.filter(
-    p => p.theme_id === theme.id || p.theme_id === null
+    p => p.theme_id === theme.id || p.theme_id == null
   );
+
+  const gallery = getThemeImages(theme);
+  const heroImage = gallery[Math.min(activeImage, gallery.length - 1)];
 
   return (
     <div className="space-y-8">
@@ -74,13 +87,34 @@ export function ThemeDetail() {
           </div>
         </div>
 
-        {/* Hero Image */}
-        <div className="relative overflow-hidden rounded-2xl shadow-pop">
-          <img
-            src={theme.image_url || '/images/2 PIC.jpg'}
-            alt={theme.name}
-            className="h-56 w-full object-cover sm:h-80 lg:h-[380px]"
-          />
+        {/* Hero Image + gallery */}
+        <div className="space-y-3">
+          <div className="relative overflow-hidden rounded-2xl shadow-pop">
+            <img
+              src={heroImage}
+              alt={`${theme.name} event setup`}
+              className="h-56 w-full object-cover sm:h-80 lg:h-[380px]"
+            />
+          </div>
+          {gallery.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label={`${theme.name} photos`}>
+              {gallery.map((src, i) => (
+                <button
+                  key={src}
+                  type="button"
+                  onClick={() => setActiveImage(i)}
+                  aria-label={`Show photo ${i + 1} of ${gallery.length}`}
+                  aria-pressed={heroImage === src}
+                  className={cn(
+                    'h-16 w-24 shrink-0 overflow-hidden rounded-lg border-2 transition-all',
+                    heroImage === src ? 'border-gold shadow-card' : 'border-transparent opacity-70 hover:opacity-100'
+                  )}
+                >
+                  <img src={src} alt="" className="h-full w-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -111,7 +145,7 @@ export function ThemeDetail() {
                   <span className="text-xs font-sans font-normal text-text-muted"> / guest</span>
                 </div>
 
-                <p className="mt-4 text-xs text-text-muted leading-relaxed">
+                <p className="mt-4 text-sm text-text-muted leading-relaxed">
                   {pkg.description}
                 </p>
 

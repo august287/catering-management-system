@@ -15,6 +15,16 @@ import { Pagination } from '@/components/ui/Pagination';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { formatCurrency, MIN_GUEST_COUNT, MAX_GUEST_COUNT } from '@/lib/utils';
 import { MenuItem, Package, EventTheme, RentalItem } from '@/types/database';
+import { getThemeImage } from '@/lib/themeImages';
+import {
+  COURSES,
+  CourseKey,
+  GENERIC_RULES,
+  MAX_PER_COURSE,
+  MenuRules,
+  describeAllowance,
+  getPackageMenuRules,
+} from '@/lib/menuCourses';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { useToast } from '@/components/ui/Toast';
 
@@ -63,7 +73,31 @@ export function MenuManagement() {
     price_per_pax: 500,
     min_pax: MIN_GUEST_COUNT,
     theme_id: '' as string | number,
+    // Menu allowance: dishes the customer chooses per course, and fixed inclusions.
+    courseCounts: {} as Partial<Record<CourseKey, string>>,
+    included: '',
   });
+
+  const rulesToForm = (rules: MenuRules) => ({
+    courseCounts: Object.fromEntries(COURSES.map(c => [c.key, String(rules.counts[c.key] || 0)])) as Partial<
+      Record<CourseKey, string>
+    >,
+    included: (rules.included || []).join('\n'),
+  });
+
+  const formToRules = (): MenuRules => {
+    const counts: Partial<Record<CourseKey, number>> = {};
+    for (const c of COURSES) {
+      const n = parseInt(packageForm.courseCounts[c.key] || '0', 10);
+      if (n > 0) counts[c.key] = Math.min(n, MAX_PER_COURSE);
+    }
+    const included = packageForm.included
+      .split(/\n|,/)
+      .map(s => s.trim())
+      .filter(Boolean)
+      .slice(0, 10);
+    return { counts, included };
+  };
 
   const [rentalDialogOpen, setRentalDialogOpen] = useState(false);
   const [editingRental, setEditingRental] = useState<RentalItem | null>(null);
@@ -215,6 +249,7 @@ export function MenuManagement() {
         price_per_pax: pkg.price_per_pax,
         min_pax: pkg.min_pax,
         theme_id: pkg.theme_id || '',
+        ...rulesToForm(getPackageMenuRules(pkg)),
       });
     } else {
       setEditingPackage(null);
@@ -224,6 +259,7 @@ export function MenuManagement() {
         price_per_pax: 550,
         min_pax: MIN_GUEST_COUNT,
         theme_id: '',
+        ...rulesToForm(GENERIC_RULES),
       });
     }
     setPackageDialogOpen(true);
@@ -232,6 +268,7 @@ export function MenuManagement() {
   const handleSavePackage = async (e: React.FormEvent) => {
     e.preventDefault();
     const themeIdNum = packageForm.theme_id ? Number(packageForm.theme_id) : null;
+    const menu_rules = formToRules();
     await runSave(async () => {
     if (editingPackage) {
       await updatePackage(editingPackage.id, {
@@ -240,6 +277,7 @@ export function MenuManagement() {
         price_per_pax: Number(packageForm.price_per_pax),
         min_pax: Number(packageForm.min_pax),
         theme_id: themeIdNum,
+        menu_rules,
       });
     } else {
       await addPackage({
@@ -248,6 +286,7 @@ export function MenuManagement() {
         price_per_pax: Number(packageForm.price_per_pax),
         min_pax: Number(packageForm.min_pax),
         theme_id: themeIdNum,
+        menu_rules,
       });
     }
     }, () => setPackageDialogOpen(false), editingPackage ? 'Package updated' : 'Package created');
@@ -546,9 +585,14 @@ export function MenuManagement() {
                         Associated Theme: <span className="font-semibold text-text">{th.name}</span>
                       </p>
                     )}
-                    <p className="mt-3 text-xs text-text-muted leading-relaxed">
+                    <p className="mt-3 text-sm text-text-muted leading-relaxed">
                       {pkg.description}
                     </p>
+                    {describeAllowance(getPackageMenuRules(pkg)) && (
+                      <p className="mt-2 text-xs font-semibold text-gold-dark">
+                        Customer chooses: {describeAllowance(getPackageMenuRules(pkg))}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center justify-end gap-2 border-t border-border p-4 bg-cream/30">
                     <Button
@@ -581,7 +625,7 @@ export function MenuManagement() {
               <Card key={theme.id} className="overflow-hidden">
                 <div
                   className="h-44 w-full bg-cover bg-center"
-                  style={{ backgroundImage: `url(${theme.image_url})` }}
+                  style={{ backgroundImage: `url("${getThemeImage(theme)}")` }}
                 />
                 <div className="p-5">
                   <div className="flex items-center justify-between">
@@ -910,6 +954,47 @@ export function MenuManagement() {
               placeholder="Course selections, beverage inclusions, service crew details..."
             />
           </div>
+
+          <fieldset className="rounded-lg border border-border p-3">
+            <legend className="px-1 text-xs font-semibold uppercase text-text-muted">
+              Customer Menu Choices
+            </legend>
+            <p className="mb-3 text-[11px] text-text-muted">
+              How many dishes the customer picks from each course when booking. Use 0 for courses not included.
+            </p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {COURSES.map(c => (
+                <div key={c.key}>
+                  <label htmlFor={`pkg-course-${c.key}`} className="mb-1 block text-[11px] font-semibold text-text">
+                    {c.label}
+                  </label>
+                  <Input
+                    id={`pkg-course-${c.key}`}
+                    type="number"
+                    min={0}
+                    max={MAX_PER_COURSE}
+                    value={packageForm.courseCounts[c.key] ?? '0'}
+                    onChange={e =>
+                      setPackageForm({
+                        ...packageForm,
+                        courseCounts: { ...packageForm.courseCounts, [c.key]: e.target.value.replace(/\D/g, '').slice(0, 2) },
+                      })
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+            <label htmlFor="pkg-included" className="mb-1 mt-3 block text-[11px] font-semibold text-text">
+              Always included (one per line)
+            </label>
+            <Textarea
+              id="pkg-included"
+              rows={2}
+              value={packageForm.included}
+              onChange={e => setPackageForm({ ...packageForm, included: e.target.value })}
+              placeholder={'Bottomless Iced Tea\nChampagne Toast'}
+            />
+          </fieldset>
 
           {formError && (
             <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">

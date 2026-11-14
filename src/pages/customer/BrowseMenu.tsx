@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/Input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { useCateringData } from '@/hooks/useCateringData';
 import { formatCurrency } from '@/lib/utils';
+import { getThemeImage, themePath } from '@/lib/themeImages';
 
 export function BrowseMenu() {
   const { themes, packages, menuItems, categories, rentals } = useCateringData();
@@ -98,7 +99,7 @@ export function BrowseMenu() {
                     {/* Theme Image */}
                     <div
                       className="relative h-52 w-full bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
-                      style={{ backgroundImage: `url(${theme.image_url})` }}
+                      style={{ backgroundImage: `url("${getThemeImage(theme)}")` }}
                     >
                       <div className="absolute inset-0 bg-gradient-to-t from-ink/80 via-transparent to-transparent" />
                       <div className="absolute bottom-3 left-4 right-4 text-white">
@@ -131,7 +132,7 @@ export function BrowseMenu() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-2 border-t border-border p-4 bg-cream/30">
-                    <Link to={`/customer/menu/${theme.id}`} className="flex-1">
+                    <Link to={themePath(theme)} className="flex-1">
                       <Button variant="outline" size="sm" className="w-full text-xs">
                         View Packages
                       </Button>
