@@ -152,16 +152,58 @@ interface BarPoint {
   revenue: number;
 }
 
+const MAX_TICK_LINES = 3;
+const TICK_LINE_CHARS = 12;
+
+// Breaks a package name into short lines so full names fit under narrow bars.
+function wrapLabel(label: string): string[] {
+  const lines: string[] = [];
+  let current = '';
+  for (const word of label.split(/\s+/).filter(Boolean)) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length <= TICK_LINE_CHARS || !current) {
+      current = next;
+    } else {
+      lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  if (lines.length > MAX_TICK_LINES) {
+    const kept = lines.slice(0, MAX_TICK_LINES);
+    kept[MAX_TICK_LINES - 1] = `${kept[MAX_TICK_LINES - 1]}…`;
+    return kept;
+  }
+  return lines;
+}
+
+function PackageTick({ x, y, payload }: { x?: number; y?: number; payload?: { value: string } }) {
+  const lines = wrapLabel(payload?.value ?? '');
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text textAnchor="middle" fill="#6b6459" fontSize={10}>
+        {lines.map((line, i) => (
+          <tspan key={i} x={0} dy={12}>
+            {line}
+          </tspan>
+        ))}
+      </text>
+    </g>
+  );
+}
+
 export function BookingsBarChart({ data }: { data: BarPoint[] }) {
   return (
-    <div className="h-[280px] w-full">
+    <div className="h-[300px] w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e8e3da" vertical={false} />
           <XAxis
             dataKey="name"
             stroke="#6b6459"
-            fontSize={11}
+            tick={<PackageTick />}
+            height={48}
+            interval={0}
             tickLine={false}
             axisLine={{ stroke: '#e8e3da' }}
           />

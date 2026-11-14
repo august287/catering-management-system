@@ -24,6 +24,7 @@ interface AuthContextType {
   requestPasswordReset: (email: string) => Promise<{ success: boolean; demoReset?: boolean; error?: string }>;
   updatePassword: (newPassword: string, demoEmail?: string) => Promise<{ success: boolean; error?: string }>;
   verifyResetCode: (email: string, code: string) => Promise<{ success: boolean; error?: string }>;
+  verifyResetLink: (tokenHash: string) => Promise<{ success: boolean; error?: string }>;
   setOwnDisplayName: (name: string) => void;
 }
 
@@ -42,6 +43,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // is configured, so we don't duplicate profile fetching in initializeAuth.
   useEffect(() => {
     let mounted = true;
+
+    // If Supabase sent the reset link to the Site URL instead of /reset-password
+    // (redirect URL not allow-listed), move it to the reset page with its token.
+    const linkParams = new URLSearchParams(window.location.search);
+    if (
+      linkParams.get('token_hash') &&
+      linkParams.get('type') === 'recovery' &&
+      window.location.pathname !== '/reset-password'
+    ) {
+      window.location.replace(`/reset-password${window.location.search}`);
+      return;
+    }
 
     if (isSupabaseConfigured()) {
       // Safety timeout: if Supabase is unreachable, stop loading after 5s
@@ -327,6 +340,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: true };
   };
 
+  // Opens the emailed reset link. The link carries a token_hash that only this page
+  // exchanges for a session, so email scanners that pre-open links can't use it up.
+  const verifyResetLink = async (tokenHash: string): Promise<{ success: boolean; error?: string }> => {
+    if (!isSupabaseConfigured()) return { success: false, error: 'Reset links need the live Supabase backend.' };
+    const { data, error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' });
+    if (error || !data.session) {
+      return {
+        success: false,
+        error: /expired|invalid/i.test(error?.message || '')
+          ? 'This reset link has expired or was already used.'
+          : error?.message || 'This reset link could not be opened.',
+      };
+    }
+    setUser({ id: data.session.user.id, email: data.session.user.email || '' });
+    return { success: true };
+  };
+
   const updatePassword = async (
     newPassword: string,
     demoEmail?: string
@@ -387,6 +417,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         requestPasswordReset,
         updatePassword,
         verifyResetCode,
+        verifyResetLink,
         setOwnDisplayName,
       }}
     >

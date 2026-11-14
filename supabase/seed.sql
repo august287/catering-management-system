@@ -294,6 +294,12 @@ values
 on conflict (id) do update set name = excluded.name, rate_per_unit = excluded.rate_per_unit;
 
 -- 7. Realistic Reservations
+-- Some demo bookings predate the 100–200 pax rule. Lift the rule while seeding
+-- so the seed can be re-run; section 11 below puts it back.
+alter table public.reservations
+  drop constraint if exists reservations_guest_count_range;
+drop trigger if exists reservations_guest_count_range on public.reservations;
+
 insert into reservations (id, booking_code, customer_id, theme_id, package_id, event_date, event_time, venue_address, guest_count, special_requests, total_amount, status, created_at)
 values
   (1, 'RES-2026-0001', '00000000-0000-0000-0000-000000000002', 1, 3, '2026-10-24', '17:00:00', 'Fernwood Gardens, Quezon City', 150, 'Allergies: No peanuts for 2 VIP guests. Warm amber uplighting preferred.', 142500.00, 'confirmed', now() - interval '14 days'),
@@ -354,14 +360,35 @@ on conflict (id) do nothing;
 
 -- ==============================================================================
 -- 11. Guest count policy: 100-200 pax per booking
--- Existing demo reservations may fall outside this range, so the reservations
--- constraint is added NOT VALID; it still applies to every new insert/update.
+-- Existing demo reservations may fall outside this range, so the rule is a
+-- trigger that only checks inserts and guest-count edits (not a NOT VALID
+-- CHECK, which would block status changes on those rows). See migration 018.
 -- ==============================================================================
 alter table public.reservations
   drop constraint if exists reservations_guest_count_range;
-alter table public.reservations
-  add constraint reservations_guest_count_range
-  check (guest_count between 100 and 200) not valid;
+
+create or replace function public.check_reservation_guest_count()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if tg_op = 'UPDATE' and new.guest_count is not distinct from old.guest_count then
+    return new;
+  end if;
+  if new.guest_count is null or new.guest_count not between 100 and 200 then
+    raise exception 'Guest count must be between 100 and 200 pax.'
+      using errcode = '23514';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists reservations_guest_count_range on public.reservations;
+create trigger reservations_guest_count_range
+  before insert or update of guest_count on public.reservations
+  for each row
+  execute function public.check_reservation_guest_count();
 
 update public.packages
 set min_pax = least(greatest(coalesce(min_pax, 100), 100), 200);

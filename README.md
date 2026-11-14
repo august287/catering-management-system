@@ -71,7 +71,8 @@ These steps are needed once on the live Supabase project. The offline demo works
 Run `supabase/migrations/012_auto_cancel_double_bookings.sql` in the Supabase SQL Editor. It cancels any date that holds more than one active booking (keeps the most advanced status, then the earliest booking) and notifies the affected customers. The admin app re-runs it automatically whenever a double booking appears.
 
 ### 2. Forgot password
-In **Authentication → URL Configuration → Redirect URLs**, add `https://<your-site>/reset-password` (and `http://localhost:3000/reset-password` for local testing).
+1. In **Authentication → URL Configuration**, set **Site URL** to `https://<your-site>` and add `https://<your-site>/reset-password` under **Redirect URLs** (and `http://localhost:3000/reset-password` for local testing).
+2. In **Authentication → Emails → Templates → Reset Password**, paste the body of `supabase/templates/reset-password.html`. Its button links to `/reset-password?token_hash=…&type=recovery`, which the app verifies when the page opens. This avoids broken links caused by email scanners pre-opening the one-time link, and by Supabase falling back to the Site URL.
 
 ### 3. Email receipts through Gmail
 Receipts are emailed to the customer automatically when an admin verifies a payment, and can be resent with **Email Receipt** in the receipt preview.

@@ -70,7 +70,7 @@ export function Reports() {
     const count = matchingReservations.length;
     const revenue = matchingReservations.reduce((sum, r) => sum + r.total_amount, 0);
     return {
-      name: pkg.name.split(' ')[0], // short name
+      name: pkg.name,
       fullName: pkg.name,
       count,
       revenue,

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { friendlyDbError } from '@/lib/dbErrors';
 import { mockStore, withDefaultMenuImage } from '@/lib/mockData';
 import {
   isAtLeastOneWeekAhead,
@@ -351,7 +352,7 @@ export function useCateringData() {
           mockStore.saveMenuItems(next);
           return next;
         });
-        throw new Error(error.message);
+        throw new Error(friendlyDbError(error));
       }
       if (data) {
         const reconciled = data as MenuItem;
@@ -404,7 +405,7 @@ export function useCateringData() {
           mockStore.savePackages(next);
           return next;
         });
-        throw new Error(error.message);
+        throw new Error(friendlyDbError(error));
       }
       if (data) {
         const reconciled = data as Package;
@@ -432,7 +433,7 @@ export function useCateringData() {
         ({ error } = await supabase.from('packages').update(rest).eq('id', id));
         if (!error) throw new Error(MENU_RULES_MIGRATION_MESSAGE);
       }
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyDbError(error));
     }
   };
 
@@ -459,7 +460,7 @@ export function useCateringData() {
           mockStore.saveThemes(next);
           return next;
         });
-        throw new Error(error.message);
+        throw new Error(friendlyDbError(error));
       }
       if (data) {
         const reconciled = data as EventTheme;
@@ -497,7 +498,7 @@ export function useCateringData() {
     if (invalid) throw new Error(invalid);
     if (isSupabaseConfigured()) {
       const { data, error } = await supabase.from('profiles').update({ name }).eq('id', id).select('id');
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyDbError(error));
       if (!data || data.length === 0) throw new Error('You do not have permission to rename this account.');
     }
     const updated = profiles.map(p => (p.id === id ? { ...p, name } : p));
@@ -514,7 +515,7 @@ export function useCateringData() {
     if (invalid) throw new Error(invalid);
     if (isSupabaseConfigured()) {
       const { data, error } = await supabase.from('profiles').update({ role }).eq('id', id).select('id');
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(friendlyDbError(error));
       // RLS hides rows the caller may not change, so no rows back means "not allowed".
       if (!data || data.length === 0) throw new Error('You do not have permission to change this role.');
     }
@@ -537,7 +538,7 @@ export function useCateringData() {
           mockStore.saveRentals(next);
           return next;
         });
-        throw new Error(error.message);
+        throw new Error(friendlyDbError(error));
       }
       if (data) {
         const reconciled = data as RentalItem;
@@ -697,7 +698,7 @@ export function useCateringData() {
           return next;
         });
         if (isDoubleBookingError(insertErr?.message)) throw new Error(DOUBLE_BOOKING_MESSAGE);
-        throw new Error(insertErr?.message || 'Failed to create reservation.');
+        throw new Error(friendlyDbError(insertErr, 'Failed to create reservation.'));
       }
 
       setReservations(prev => {
@@ -763,7 +764,7 @@ export function useCateringData() {
         if (isDoubleBookingError(updateError.message)) {
           throw new Error('Cannot re-open this booking: its date is already taken by another reservation.');
         }
-        throw new Error(`Could not update the reservation: ${updateError.message}`);
+        throw new Error(`Could not update the reservation: ${friendlyDbError(updateError)}`);
       }
       if (!savedRows || savedRows.length === 0) {
         throw new Error('Could not update the reservation: it was not found or you lack permission.');
@@ -971,7 +972,7 @@ export function useCateringData() {
         if (insertError.code === '23505') {
           throw new Error('This transaction reference number has already been submitted.');
         }
-        throw new Error(insertError.message);
+        throw new Error(friendlyDbError(insertError));
       }
 
       if (insertedPay) {
@@ -1029,7 +1030,7 @@ export function useCateringData() {
               'Run migration 017_fix_payment_reference_check.sql in Supabase, then try again.'
           );
         }
-        throw new Error(`Could not update the payment: ${updateError.message}`);
+        throw new Error(`Could not update the payment: ${friendlyDbError(updateError)}`);
       }
       if (!savedRows || savedRows.length === 0) {
         throw new Error('Could not update the payment: it was not found or you lack permission.');
