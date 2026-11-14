@@ -252,8 +252,7 @@ values
   (1, 'Silver Buffet', '1 Soup, 1 Appetizer, 3 Main Courses (Pork, Chicken, Fish), 1 Noodle, 1 Rice, 1 Dessert, Bottomless Iced Tea. Complete buffet setup with floral arrangement and trained waiters.', 450.00, 100, null),
   (2, 'Gold Feast', '1 Soup, 2 Appetizers, 4 Main Courses (Beef, Pork, Chicken, Seafood), 1 Noodle, 2 Rice varieties, 2 Desserts, Bottomless Specialty Cooler. Complete themed setup with centerpiece on all guest tables.', 650.00, 100, null),
   (3, 'Platinum Royal Banquet', 'Full wedding grand reception: 2 Soups, 3 Appetizers, 5 Premium Mains including Roasted Beef Caldereta & Tiger Prawns, 2 Noodles, 3 Gourmet Desserts, Champagne toast, VIP Table service & centerpiece.', 950.00, 100, 1),
-  (4, 'Debutante Special Feast', 'Curated for 18th Birthdays: 2 Appetizers, 4 Main Courses, 1 Pasta/Noodle, Steamed Rice, 2 Desserts, Mocktail fountain, Debutante stage decor and 18-roses arrangement coordination.', 550.00, 100, 3),
-  (5, 'Corporate Lite Executive', 'Tailored for conferences, seminars, and corporate meetings: Quick-serve hot buffet with 3 Mains, 1 Vegetable/Salad, Rice, Dessert, and Fresh Brewed Coffee / Iced Tea station.', 400.00, 100, 4)
+  (4, 'Debutante Special Feast', 'Curated for 18th Birthdays: 2 Appetizers, 4 Main Courses, 1 Pasta/Noodle, Steamed Rice, 2 Desserts, Mocktail fountain, Debutante stage decor and 18-roses arrangement coordination.', 550.00, 100, 3)
 on conflict (id) do update set name = excluded.name, price_per_pax = excluded.price_per_pax, min_pax = excluded.min_pax;
 
 -- 6. Rental Items
@@ -275,18 +274,18 @@ values
   (1, 'RES-2026-0001', '00000000-0000-0000-0000-000000000002', 1, 3, '2026-10-24', '17:00:00', 'Fernwood Gardens, Quezon City', 150, 'Allergies: No peanuts for 2 VIP guests. Warm amber uplighting preferred.', 142500.00, 'confirmed', now() - interval '14 days'),
   (2, 'RES-2026-0002', '00000000-0000-0000-0000-000000000003', 2, 2, '2026-10-28', '11:30:00', 'San Antonio Clubhouse, Makati City', 80, 'Lightning McQueen backdrop setup for child 7th birthday.', 52000.00, 'confirmed', now() - interval '10 days'),
   (3, 'RES-2026-0003', '00000000-0000-0000-0000-000000000004', 3, 4, '2026-11-05', '18:00:00', 'The Blue Leaf Pavilion, Taguig', 120, '18 roses coordinator table, Cinderella theme palette.', 66000.00, 'in_progress', now() - interval '8 days'),
-  (4, 'RES-2026-0004', '00000000-0000-0000-0000-000000000002', 4, 5, '2026-11-12', '09:00:00', 'BGC Tower Function Hall 4B, Taguig', 60, 'Coffee station setup 30 minutes prior to keynote.', 24000.00, 'pending', now() - interval '3 days'),
+  (4, 'RES-2026-0004', '00000000-0000-0000-0000-000000000002', 4, null, '2026-11-12', '09:00:00', 'BGC Tower Function Hall 4B, Taguig', 60, 'Coffee station setup 30 minutes prior to keynote.', 24000.00, 'pending', now() - interval '3 days'),
   (5, 'RES-2026-0005', '00000000-0000-0000-0000-000000000003', 5, 1, '2026-11-20', '12:00:00', 'Barangay San Isidro Community Hall, Pasig', 100, 'Additional rice warmer requested.', 45000.00, 'pending', now() - interval '2 days'),
   (6, 'RES-2026-0006', '00000000-0000-0000-0000-000000000004', 6, 2, '2026-11-25', '10:30:00', 'Holy Trinity Hall, San Juan', 75, 'Pastel blue theme with angel wings photo booth.', 48750.00, 'pending', now() - interval '1 day'),
   (7, 'RES-2026-0007', '00000000-0000-0000-0000-000000000002', 1, 3, '2026-08-15', '16:00:00', 'Villa Milagros Events Place, Rodriguez Rizal', 180, 'Completed wedding banquet. Exceptional compliments on Kare-Kare.', 171000.00, 'completed', now() - interval '40 days'),
-  (8, 'RES-2026-0008', '00000000-0000-0000-0000-000000000003', 4, 5, '2026-08-22', '08:30:00', 'Ortigas Center Boardroom, Pasig', 40, 'Quarterly shareholder lunch.', 16000.00, 'completed', now() - interval '32 days'),
+  (8, 'RES-2026-0008', '00000000-0000-0000-0000-000000000003', 4, null, '2026-08-22', '08:30:00', 'Ortigas Center Boardroom, Pasig', 40, 'Quarterly shareholder lunch.', 16000.00, 'completed', now() - interval '32 days'),
   (9, 'RES-2026-0009', '00000000-0000-0000-0000-000000000004', 2, 1, '2026-09-01', '14:00:00', 'Valle Verde 2 Clubhouse, Pasig', 90, '50th Golden Jubilee Birthday.', 40500.00, 'completed', now() - interval '20 days'),
   (10, 'RES-2026-0010', '00000000-0000-0000-0000-000000000002', 5, 2, '2026-09-10', '18:00:00', 'Marikina River Park Pavilion', 110, 'Alumni Reunion Feast.', 71500.00, 'completed', now() - interval '12 days'),
   (11, 'RES-2026-0011', '00000000-0000-0000-0000-000000000003', 1, 2, '2026-10-05', '15:00:00', 'Taal Vista Hotel Viewdeck, Tagaytay', 70, 'Client rescheduled to next year due to overseas travel.', 45500.00, 'cancelled', now() - interval '15 days'),
   (12, 'RES-2026-0012', '00000000-0000-0000-0000-000000000004', 3, 4, '2026-09-18', '17:00:00', 'Oasis Manila, New Manila, QC', 100, 'Cancelled by client request.', 55000.00, 'cancelled', now() - interval '5 days'),
   (13, 'RES-2026-0013', '00000000-0000-0000-0000-000000000002', 1, 3, '2026-12-10', '17:30:00', 'Glass Garden Events Venue, Pasig', 200, 'Winter wonderland floral motif.', 190000.00, 'confirmed', now() - interval '6 days'),
   (14, 'RES-2026-0014', '00000000-0000-0000-0000-000000000003', 2, 2, '2026-12-18', '12:00:00', 'Acropolis Clubhouse, Quezon City', 85, 'Family reunion and Christmas birthday.', 55250.00, 'confirmed', now() - interval '4 days'),
-  (15, 'RES-2026-0015', '00000000-0000-0000-0000-000000000004', 4, 5, '2026-12-22', '18:00:00', 'Grand Hyatt Ballroom, Taguig', 150, 'Annual Company Year-End Thanksgiving Banquet.', 60000.00, 'confirmed', now() - interval '2 days')
+  (15, 'RES-2026-0015', '00000000-0000-0000-0000-000000000004', 4, null, '2026-12-22', '18:00:00', 'Grand Hyatt Ballroom, Taguig', 150, 'Annual Company Year-End Thanksgiving Banquet.', 60000.00, 'confirmed', now() - interval '2 days')
 on conflict (id) do nothing;
 
 -- 8. Reservation Rentals

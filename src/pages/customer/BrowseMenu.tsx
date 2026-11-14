@@ -79,10 +79,15 @@ export function BrowseMenu() {
         <TabsContent value="themes" className="pt-4 space-y-6">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
             {activeThemes.map(theme => {
-              const themePackages = packages.filter(p => p.theme_id === theme.id);
+              // Same set ThemeDetail shows: theme-specific packages plus universal ones
+              const themePackages = packages.filter(
+                p => p.theme_id === theme.id || p.theme_id === null
+              );
               const minPrice = themePackages.length
                 ? Math.min(...themePackages.map(p => p.price_per_pax))
-                : 450;
+                : packages.length
+                  ? Math.min(...packages.map(p => p.price_per_pax))
+                  : null;
 
               return (
                 <Card
@@ -110,12 +115,17 @@ export function BrowseMenu() {
                         {theme.description}
                       </p>
 
-                      <div className="mt-4 flex items-center justify-between pt-3 border-t border-border text-xs">
-                        <span className="text-text-muted">Packages starting from:</span>
-                        <span className="font-serif font-bold text-ink text-sm">
-                          {formatCurrency(minPrice)} <span className="text-[10px] font-sans font-normal text-text-muted">/ head</span>
-                        </span>
-                      </div>
+                      {minPrice !== null && (
+                        <div className="mt-4 flex items-baseline justify-end gap-1.5 pt-3 border-t border-border">
+                          <span className="text-[10px] font-medium uppercase tracking-wider text-text-faint">
+                            Starts at
+                          </span>
+                          <span className="font-serif text-lg font-bold text-ink leading-none">
+                            {formatCurrency(minPrice)}
+                          </span>
+                          <span className="text-[10px] text-text-muted">/ head</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 

@@ -401,15 +401,6 @@ export const INITIAL_PACKAGES: Package[] = [
     min_pax: 100,
     theme_id: 3,
   },
-  {
-    id: 5,
-    name: 'Corporate Lite Executive',
-    description:
-      'Tailored for conferences, seminars, and corporate meetings: Quick-serve hot buffet with 3 Mains, 1 Vegetable/Salad, Rice, Dessert, and Fresh Brewed Coffee / Iced Tea station.',
-    price_per_pax: 400,
-    min_pax: 100,
-    theme_id: 4,
-  },
 ];
 
 export const INITIAL_RENTAL_ITEMS: RentalItem[] = [
@@ -542,7 +533,7 @@ export const INITIAL_RESERVATIONS: Reservation[] = [
     booking_code: 'RES-2026-0004',
     customer_id: '00000000-0000-0000-0000-000000000002',
     theme_id: 4,
-    package_id: 5,
+    package_id: null,
     event_date: '2026-11-12',
     event_time: '09:00',
     venue_address: 'BGC Tower Function Hall 4B, Taguig',
@@ -605,7 +596,7 @@ export const INITIAL_RESERVATIONS: Reservation[] = [
     booking_code: 'RES-2026-0008',
     customer_id: '00000000-0000-0000-0000-000000000003',
     theme_id: 4,
-    package_id: 5,
+    package_id: null,
     event_date: '2026-08-22',
     event_time: '08:30',
     venue_address: 'Ortigas Center Boardroom, Pasig',
@@ -713,7 +704,7 @@ export const INITIAL_RESERVATIONS: Reservation[] = [
     booking_code: 'RES-2026-0015',
     customer_id: '00000000-0000-0000-0000-000000000004',
     theme_id: 4,
-    package_id: 5,
+    package_id: null,
     event_date: '2026-12-22',
     event_time: '18:00',
     venue_address: 'Grand Hyatt Ballroom, Taguig',
