@@ -17,7 +17,7 @@ import { Payment } from '@/types/database';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { useToast } from '@/components/ui/Toast';
-import { emailReceipt } from '@/lib/receiptEmail';
+import { emailReceipt, receiptEmailNotice } from '@/lib/receiptEmail';
 import { paymentVerificationChecks, reservationPaymentStatus } from '@/lib/bookingTerms';
 
 export function Payments() {
@@ -121,7 +121,14 @@ export function Payments() {
     // Send the official receipt to the customer's Gmail once the payment is verified.
     if (status === 'verified' && isSupabaseConfigured()) {
       emailReceipt(id)
-        .then(to => toast({ title: 'Receipt emailed', description: `Sent to ${to}.` }))
+        .then(r =>
+          toast({
+            tone: r.likelyUndeliverable ? 'error' : 'success',
+            duration: 9000,
+            title: r.likelyUndeliverable ? 'Receipt will likely bounce' : 'Receipt handed to Gmail',
+            description: receiptEmailNotice(r),
+          })
+        )
         .catch(err =>
           toast({
             tone: 'error',

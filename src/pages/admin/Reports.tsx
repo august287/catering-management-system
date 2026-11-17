@@ -8,7 +8,7 @@ import { PAYMENT_METHOD_LABELS } from '@/lib/paymentLabels';
 import type { PaymentMethod } from '@/types/database';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const FULL_MONTHS = [
+const fullMonthNames = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
@@ -116,8 +116,8 @@ export function Reports() {
   const collectionRate = totalContract > 0 ? (totalCollected / totalContract) * 100 : 0;
   const outstanding = Math.max(0, totalContract - totalCollected);
 
-  const prevMonthName = FULL_MONTHS[prevMonthDate.getMonth()];
-  const thisMonthName = FULL_MONTHS[thisMonth];
+  const prevMonthName = fullMonthNames[prevMonthDate.getMonth()];
+  const thisMonthName = fullMonthNames[thisMonth];
 
   // --- Chart 1: revenue this year vs last year ---
   const yearCompare = MONTHS.map((month, i) => ({
@@ -253,7 +253,7 @@ export function Reports() {
               Year-to-date revenue is {formatCurrency(ytdThis)} vs {formatCurrency(ytdLast)} in the same months of{' '}
               {lastYear}, so it {changeWord(ytdChange)}.{' '}
               {peak.thisYear > 0
-                ? `${FULL_MONTHS[peakIdx]} is the strongest month so far this year (${formatCurrency(peak.thisYear)}).`
+                ? `${fullMonthNames[peakIdx]} is the strongest month so far this year (${formatCurrency(peak.thisYear)}).`
                 : 'No verified revenue has been recorded this year yet.'}
             </Interpretation>
           </CardContent>
@@ -277,7 +277,7 @@ export function Reports() {
               {formatCurrency(contractedYear)} of events are scheduled this year and {formatCurrency(collectedYear)} has
               been collected ({contractedYear ? ((collectedYear / contractedYear) * 100).toFixed(1) : '0.0'}%).{' '}
               {biggestGap.contracted - biggestGap.collected > 0
-                ? `${FULL_MONTHS[MONTHS.indexOf(biggestGap.month)]} has the biggest gap (${formatCurrency(
+                ? `${fullMonthNames[MONTHS.indexOf(biggestGap.month)]} has the biggest gap (${formatCurrency(
                     biggestGap.contracted - biggestGap.collected
                   )}); follow up on balances for those events.`
                 : 'Collections are keeping pace with contracted events.'}

@@ -237,17 +237,30 @@ Deno.serve(async req => {
       secure: true,
       auth: { user: gmailUser, pass: gmailPass },
     });
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: `"${BUSINESS_NAME}" <${gmailUser}>`,
       to,
+      replyTo: gmailUser,
       subject: `Your receipt ${receiptNo} for ${reservation.booking_code} — ${BUSINESS_NAME}`,
       text,
       html,
+    });
+    // Gmail can accept the connection but refuse the recipient; nodemailer only
+    // throws when *every* recipient is refused, so check explicitly.
+    const rejected = (info.rejected || []).map(String);
+    console.log('Receipt email', { to, messageId: info.messageId, accepted: info.accepted, rejected, response: info.response });
+    if (rejected.length > 0 || (info.accepted || []).length === 0) {
+      return json({ error: `Gmail refused the address ${to}. Check the customer's email.` }, 502);
+    }
+    return json({
+      sent: true,
+      to,
+      messageId: info.messageId,
+      // Gmail files mail you send to your own address under Sent, not Inbox.
+      selfSend: to.toLowerCase() === gmailUser.toLowerCase(),
     });
   } catch (err) {
     console.error('Gmail send failed:', err);
     return json({ error: 'Could not send the email. Check the Gmail app password.' }, 502);
   }
-
-  return json({ sent: true, to });
 });

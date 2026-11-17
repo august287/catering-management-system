@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Mail, Printer } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
-import { emailReceipt } from '@/lib/receiptEmail';
+import { emailReceipt, receiptEmailNotice } from '@/lib/receiptEmail';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { Dialog } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
@@ -337,8 +337,13 @@ export function PaymentReceiptDialog({
     if (!payment) return;
     setEmailing(true);
     try {
-      const to = await emailReceipt(payment.id);
-      toast({ title: 'Receipt emailed', description: `Sent to ${to}.` });
+      const r = await emailReceipt(payment.id);
+      toast({
+        tone: r.likelyUndeliverable ? 'error' : 'success',
+            duration: 9000,
+        title: r.likelyUndeliverable ? 'Receipt will likely bounce' : 'Receipt handed to Gmail',
+        description: receiptEmailNotice(r),
+      });
     } catch (err: any) {
       toast({ tone: 'error', title: 'Receipt email not sent', description: err?.message });
     } finally {
