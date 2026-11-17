@@ -10,6 +10,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useCateringData } from '@/hooks/useCateringData';
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
 import { Reservation } from '@/types/database';
+import { TermsDialog, TermsLink } from '@/components/TermsAndConditions';
+import { serviceEndTime } from '@/lib/bookingTerms';
 
 export function MyReservations() {
   const { profile } = useAuth();
@@ -18,6 +20,7 @@ export function MyReservations() {
 
   const [selectedRes, setSelectedRes] = useState<Reservation | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [termsOpen, setTermsOpen] = useState(false);
 
   // New booking highlight if redirected from booking wizard
   const newBookingCode = (location.state as any)?.newBookingCode;
@@ -207,6 +210,21 @@ export function MyReservations() {
                   <span className="font-semibold text-text-muted">Guest Count:</span>
                   <span className="font-bold text-ink">{selectedRes.guest_count} persons</span>
                 </div>
+                {selectedRes.service_hours && (
+                  <div className="flex justify-between gap-4">
+                    <span className="font-semibold text-text-muted">Hours of Service:</span>
+                    <span className="font-bold text-ink">
+                      {selectedRes.service_hours} hrs ({formatTime(selectedRes.event_time)} –{' '}
+                      {formatTime(serviceEndTime(selectedRes.event_time, selectedRes.service_hours))})
+                    </span>
+                  </div>
+                )}
+                {selectedRes.server_count && (
+                  <div className="flex justify-between gap-4">
+                    <span className="font-semibold text-text-muted">Servers:</span>
+                    <span className="font-bold text-ink">{selectedRes.server_count} waitstaff</span>
+                  </div>
+                )}
                 {selTheme && (
                   <div className="flex justify-between gap-4">
                     <span className="font-semibold text-text-muted">Styling Motif:</span>
@@ -275,6 +293,15 @@ export function MyReservations() {
                 </div>
               </div>
 
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-text-muted">
+                <span>
+                  {selectedRes.terms_accepted_at
+                    ? `Terms & Conditions accepted on ${formatDate(selectedRes.terms_accepted_at)}.`
+                    : 'Covered by our standard Terms & Conditions.'}
+                </span>
+                <TermsLink onClick={() => setTermsOpen(true)} label="View contract terms" />
+              </div>
+
               <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
                 {remBalance > 0 && selectedRes.status !== 'cancelled' && selectedRes.status !== 'completed' && (
                   <Link to={`/customer/payments?reservationId=${selectedRes.id}`}>
@@ -291,6 +318,7 @@ export function MyReservations() {
           </Dialog>
         );
       })()}
+      <TermsDialog open={termsOpen} onOpenChange={setTermsOpen} />
     </div>
   );
 }

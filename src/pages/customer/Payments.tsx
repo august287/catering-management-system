@@ -27,6 +27,8 @@ import { PaymentReceiptDialog } from '@/components/PaymentReceipt';
 import { formatCurrency, formatDate, isValidPaymentReference, PAYMENT_REFERENCE_MIN_LENGTH, PAYMENT_REFERENCE_MAX_LENGTH } from '@/lib/utils';
 import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_TYPE_LABELS } from '@/lib/paymentLabels';
 import { PaymentType, PaymentMethod, Payment } from '@/types/database';
+import { TermsDialog, TermsLink } from '@/components/TermsAndConditions';
+import { paymentTypeError, reservationPaymentStatus } from '@/lib/bookingTerms';
 
 // Where customers send GCash / InstaPay payments.
 const PAYMENT_QR_SRC = '/images/payment-qr.png';
@@ -84,7 +86,7 @@ export function Payments() {
   const isQueryPayable = payableReservations.some(r => r.id === queryResId);
   const isQueryBlocked = queryResId > 0 && !isQueryPayable;
   const preselectedResId = isQueryPayable ? queryResId : payableReservations[0]?.id || 0;
-
+ 
   const [reservationId, setReservationId] = useState<number>(preselectedResId);
   const [paymentType, setPaymentType] = useState<PaymentType>('downpayment');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('gcash');
@@ -114,6 +116,22 @@ export function Payments() {
     : 0;
   const outstandingBalance = Math.max(0, remainingBalance - pendingPaid);
   const requiresProof = paymentMethod !== 'cash';
+  const [termsOpen, setTermsOpen] = useState(false);
+
+  // Payment schedule & which payment types make sense right now.
+  const selectedStatus = useMemo(
+    () => (selectedReservation ? reservationPaymentStatus(selectedReservation, payments) : null),
+    [selectedReservation, payments]
+  );
+  const typeError = selectedStatus ? paymentTypeError(paymentType, selectedStatus) : null;
+  const typeAllowed = (t: PaymentType) => !selectedStatus || !paymentTypeError(t, selectedStatus);
+
+  // Pick the next payment in the schedule whenever the booking changes.
+  const hasDp = selectedStatus?.hasDownpayment;
+  useEffect(() => {
+    if (hasDp === undefined) return;
+    setPaymentType(hasDp ? 'final_balance' : 'downpayment');
+  }, [reservationId, hasDp]);
 
   // The amount is fixed by the payment type: down payment is 50% of the contract
   // (capped at what is still owed); final balance and full payment cover the rest.
@@ -186,6 +204,10 @@ export function Payments() {
     }
 
     const roundedAmount = Math.round(amount * 100) / 100;
+    if (typeError) {
+      setErrorMessage(typeError);
+      return;
+    }
     if (outstandingBalance <= 0) {
       setErrorMessage(
         'This reservation is already fully covered by verified or pending payments.'
@@ -299,8 +321,8 @@ export function Payments() {
           <CardHeader>
             <CardTitle>Submit a Payment</CardTitle>
             <p className="text-xs text-text-muted">
-              Pay via GCash, card, or cash, then upload your proof of payment for
-              verification.
+              Pay via GCash / InstaPay or cash on site, then upload your proof of payment for
+              verification. <TermsLink onClick={() => setTermsOpen(true)} label="Payment terms" />
             </p>
           </CardHeader>
           <CardContent>
@@ -378,6 +400,41 @@ export function Payments() {
                     </span>
                   </div>
                 )}
+                {selectedStatus && (
+                  <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="Payment schedule">
+                    {selectedStatus.schedule.map(item => (
+                      <li
+                        key={item.key}
+                        className={`rounded-lg border p-2.5 text-[11px] ${
+                          item.state === 'paid'
+                            ? 'border-emerald-200 bg-emerald-50'
+                            : item.state === 'pending'
+                            ? 'border-amber-200 bg-amber-50'
+                            : item.state === 'overdue'
+                            ? 'border-red-200 bg-red-50'
+                            : 'border-border bg-cream/40'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold text-ink">{item.label}</span>
+                          <span className="font-bold text-ink">{formatCurrency(item.amount)}</span>
+                        </div>
+                        <div className="mt-0.5 flex items-center justify-between gap-2 text-text-muted">
+                          <span>Due {formatDate(item.dueDate)}</span>
+                          <span className="font-semibold uppercase">
+                            {item.state === 'paid'
+                              ? 'Paid'
+                              : item.state === 'pending'
+                              ? 'Awaiting verification'
+                              : item.state === 'overdue'
+                              ? 'Overdue'
+                              : 'Due'}
+                          </span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -391,10 +448,17 @@ export function Payments() {
                       setPaymentType(e.target.value as PaymentType);
                     }}
                   >
-                    <option value="downpayment">{PAYMENT_TYPE_LABELS.downpayment}</option>
-                    <option value="final_balance">{PAYMENT_TYPE_LABELS.final_balance}</option>
-                    <option value="full_payment">{PAYMENT_TYPE_LABELS.full_payment}</option>
+                    <option value="downpayment" disabled={!typeAllowed('downpayment')}>
+                      {PAYMENT_TYPE_LABELS.downpayment}
+                    </option>
+                    <option value="final_balance" disabled={!typeAllowed('final_balance')}>
+                      {PAYMENT_TYPE_LABELS.final_balance}
+                    </option>
+                    <option value="full_payment" disabled={!typeAllowed('full_payment')}>
+                      {PAYMENT_TYPE_LABELS.full_payment}
+                    </option>
                   </Select>
+                  {typeError && <p className="mt-1 text-[11px] font-semibold text-red-600">{typeError}</p>}
                 </div>
 
                 <div>
@@ -406,7 +470,6 @@ export function Payments() {
                     onChange={e => setPaymentMethod(e.target.value as PaymentMethod)}
                   >
                     <option value="gcash">GCash / InstaPay QR ({PAYMENT_MOBILE_NO})</option>
-                    <option value="credit_card">Credit / Debit Card</option>
                     <option value="cash">Cash on Site</option>
                   </Select>
                 </div>
@@ -459,7 +522,7 @@ export function Payments() {
                   <p className="mt-1 text-[11px] text-text-muted">
                     {paymentMethod === 'cash'
                       ? 'Optional for cash on site. '
-                      : 'Required for GCash and card payments. '}
+                      : 'Required for GCash payments. '}
                     6–80 characters using letters, numbers, hyphens, underscores, or periods only.
                   </p>
                 </div>
@@ -493,7 +556,7 @@ export function Payments() {
                 </div>
                 <p className="mt-1 text-[11px] text-text-muted">
                   {requiresProof
-                    ? 'Required for GCash and card payments. Upload a screenshot or photo of the transaction. JPG, PNG or WebP · max 5 MB.'
+                    ? 'Required for GCash payments. Upload a screenshot or photo of the transaction. JPG, PNG or WebP · max 5 MB.'
                     : 'Optional for cash payments. Upload a photo if available. JPG, PNG or WebP · max 5 MB.'}
                 </p>
               </div>
@@ -691,6 +754,8 @@ export function Payments() {
             : []
         }
       />
+
+      <TermsDialog open={termsOpen} onOpenChange={setTermsOpen} />
 
       <ConfirmationModal
         open={showConfirm}

@@ -23,6 +23,12 @@ import { fetchAvailability } from '@/hooks/useDateAvailability';
 import { deleteStaffAccount } from '@/lib/staffAccounts';
 import { displayNameError } from '@/lib/staffRules';
 import { menuSelectionText } from '@/lib/menuCourses';
+import { PAYMENT_METHOD_LABELS, PAYMENT_TYPE_LABELS } from '@/lib/paymentLabels';
+import {
+  BALANCE_DUE_DAYS_BEFORE_EVENT,
+  paymentTypeError,
+  reservationPaymentStatus,
+} from '@/lib/bookingTerms';
 import {
   EventTheme,
   MenuCategory,
@@ -576,7 +582,13 @@ export function useCateringData() {
     total_amount: number;
     rentals?: { rental_item_id: number; quantity: number; subtotal: number }[];
     menu_selection?: MenuSelectionItem[];
+    service_hours?: number;
+    server_count?: number;
+    terms_accepted?: boolean;
   }) => {
+    if (!data.terms_accepted) {
+      throw new Error('Please read and agree to the Terms & Conditions before submitting.');
+    }
     if (!isAtLeastOneWeekAhead(data.event_date)) {
       throw new Error(
         'Reservations must be booked at least 1 week (7 days) before the event date.'
@@ -604,6 +616,7 @@ export function useCateringData() {
     }, 0);
     const booking_code = `RES-${currentYear}-${String(maxNum + 1).padStart(4, '0')}`;
     const newResId = Date.now();
+    const termsAcceptedAt = new Date().toISOString();
 
     const newRes: Reservation = {
       id: newResId,
@@ -617,6 +630,9 @@ export function useCateringData() {
       guest_count: data.guest_count,
       special_requests: data.special_requests || '',
       menu_selection: data.menu_selection?.length ? data.menu_selection : null,
+      service_hours: data.service_hours ?? null,
+      server_count: data.server_count ?? null,
+      terms_accepted_at: termsAcceptedAt,
       total_amount: data.total_amount,
       status: 'pending',
       created_at: new Date().toISOString(),
@@ -667,18 +683,34 @@ export function useCateringData() {
         total_amount: data.total_amount,
         status: 'pending',
       };
+      const extras: Record<string, unknown> = {
+        service_hours: data.service_hours ?? null,
+        server_count: data.server_count ?? null,
+        terms_accepted_at: termsAcceptedAt,
+      };
       const hasMenu = !!data.menu_selection?.length;
       let { data: insertedRes, error: insertErr } = await supabase
         .from('reservations')
-        .insert(hasMenu ? { ...row, menu_selection: data.menu_selection } : row)
+        .insert({ ...row, ...extras, ...(hasMenu ? { menu_selection: data.menu_selection } : {}) })
         .select()
         .single();
+
+      // Migration 019 not run yet: keep hours/servers in the special requests instead.
+      if (insertErr && /service_hours|server_count|terms_accepted_at/.test(insertErr.message || '')) {
+        const detailText = `Hours of service: ${data.service_hours ?? '-'} · Servers: ${data.server_count ?? '-'}`;
+        row.special_requests = [data.special_requests?.trim(), detailText].filter(Boolean).join('\n\n');
+        ({ data: insertedRes, error: insertErr } = await supabase
+          .from('reservations')
+          .insert(hasMenu ? { ...row, menu_selection: data.menu_selection } : row)
+          .select()
+          .single());
+      }
 
       // Migration 016 not run yet: the menu_selection column doesn't exist. Save the
       // booking anyway and keep the chosen menu in the special requests.
       if (hasMenu && insertErr && /menu_selection/.test(insertErr.message || '')) {
         const menuText = `Chosen menu:\n${menuSelectionText(data.menu_selection!)}`;
-        const notes = [data.special_requests?.trim(), menuText].filter(Boolean).join('\n\n');
+        const notes = [(row.special_requests as string | undefined)?.trim(), menuText].filter(Boolean).join('\n\n');
         ({ data: insertedRes, error: insertErr } = await supabase
           .from('reservations')
           .insert({ ...row, special_requests: notes })
@@ -871,6 +903,11 @@ export function useCateringData() {
         'This reservation is already fully covered by verified or pending payments.'
       );
     }
+    const orderError = paymentTypeError(
+      data.payment_type,
+      reservationPaymentStatus(targetReservation, payments)
+    );
+    if (orderError) throw new Error(orderError);
     if (roundedAmount > outstandingBalance + 0.005) {
       throw new Error(
         `Payment amount cannot exceed the outstanding balance of ₱${outstandingBalance.toLocaleString(
@@ -938,8 +975,13 @@ export function useCateringData() {
     const adminNotif: Notification = {
       id: Date.now(),
       user_id: adminId,
-      title: 'Payment Awaiting Verification',
-      message: `₱${roundedAmount.toLocaleString()} received via ${data.payment_method.toUpperCase()} for Ref ${finalReference || 'N/A'}.`,
+      title:
+        data.payment_type === 'downpayment'
+          ? 'Down Payment Awaiting Verification'
+          : data.payment_type === 'full_payment'
+          ? 'Full Payment Awaiting Verification'
+          : 'Balance Payment Awaiting Verification',
+      message: `${PAYMENT_TYPE_LABELS[data.payment_type]} of ₱${roundedAmount.toLocaleString()} for ${targetReservation.booking_code} (event ${formatDate(targetReservation.event_date)}) received via ${PAYMENT_METHOD_LABELS[data.payment_method]}, Ref ${finalReference || 'N/A'}. Please verify.`,
       is_read: false,
       created_at: new Date().toISOString(),
     };
@@ -1081,8 +1123,12 @@ export function useCateringData() {
       title: status === 'verified' ? verifiedTitle : 'Payment Issue Flagged',
       message:
         status === 'verified'
-          ? `Your payment of ₱${payment.amount.toLocaleString()} for ${targetRes.booking_code} has been approved.`
-          : `Your payment of ₱${payment.amount.toLocaleString()} for ${targetRes.booking_code} could not be verified. Please check reference details.`,
+          ? `Your ${PAYMENT_TYPE_LABELS[payment.payment_type].toLowerCase()} of ₱${payment.amount.toLocaleString()} for ${targetRes.booking_code} has been verified.${
+              payment.payment_type === 'downpayment'
+                ? ` Your date is reserved. Please settle the remaining balance ${BALANCE_DUE_DAYS_BEFORE_EVENT} days before the event.`
+                : ' Your booking is now fully paid.'
+            }`
+          : `Your ${PAYMENT_TYPE_LABELS[payment.payment_type].toLowerCase()} of ₱${payment.amount.toLocaleString()} for ${targetRes.booking_code} could not be verified. Please check the reference details and submit again.`,
       is_read: false,
       created_at: new Date().toISOString(),
     };

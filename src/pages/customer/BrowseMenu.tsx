@@ -10,10 +10,11 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { useCateringData } from '@/hooks/useCateringData';
 import { formatCurrency } from '@/lib/utils';
 import { getThemeImage, themePath } from '@/lib/themeImages';
+import { CompletePackages } from '@/components/CompletePackages';
 
 export function BrowseMenu() {
   const { themes, packages, menuItems, categories, rentals } = useCateringData();
-  const [activeTab, setActiveTab] = useState('themes');
+  const [activeTab, setActiveTab] = useState('packages');
   const [selectedCat, setSelectedCat] = useState<string>('all');
   const [foodSearch, setFoodSearch] = useState('');
 
@@ -66,6 +67,7 @@ export function BrowseMenu() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border pb-4">
           <TabsList>
+            <TabsTrigger value="packages">Complete Packages ({packages.length})</TabsTrigger>
             <TabsTrigger value="themes">Event Themes ({activeThemes.length})</TabsTrigger>
             <TabsTrigger value="food">Dishes & Menu ({menuItems.length})</TabsTrigger>
             <TabsTrigger value="rentals">Banquet Rentals ({rentals.length})</TabsTrigger>
@@ -75,6 +77,11 @@ export function BrowseMenu() {
             All prices in Philippine Peso (PHP) · Fully customized inclusions available
           </div>
         </div>
+
+        {/* Tab: Complete Packages */}
+        <TabsContent value="packages" className="pt-4">
+          <CompletePackages packages={packages} themes={themes} />
+        </TabsContent>
 
         {/* Tab 1: Event Themes */}
         <TabsContent value="themes" className="pt-4 space-y-6">

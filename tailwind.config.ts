@@ -43,6 +43,8 @@ const config: Config = {
       fontFamily: {
         serif: ['Playfair Display', 'Georgia', 'serif'],
         sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        // Prices and quantities: lining, even-width digits so amounts line up.
+        num: ['Manrope', 'Inter', '-apple-system', 'sans-serif'],
       },
       boxShadow: {
         card: '0 1px 2px rgba(23, 20, 15, 0.04), 0 4px 16px rgba(23, 20, 15, 0.05)',

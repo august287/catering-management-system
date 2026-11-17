@@ -38,6 +38,22 @@ import {
   requiredCount,
   toMenuSelectionItems,
 } from '@/lib/menuCourses';
+import { RunningInvoice, InvoiceLine } from '@/components/RunningInvoice';
+import { TermsContent, TermsDialog, TermsLink } from '@/components/TermsAndConditions';
+import {
+  EXTRA_HOUR_RATE,
+  EXTRA_SERVER_RATE,
+  GUESTS_PER_SERVER,
+  INCLUDED_SERVICE_HOURS,
+  MAX_SERVERS,
+  SERVICE_HOUR_OPTIONS,
+  buildPaymentSchedule,
+  extraHoursCost,
+  extraServersCost,
+  includedServers,
+  serviceEndTime,
+  todayKey,
+} from '@/lib/bookingTerms';
 import { fetchAvailability } from '@/hooks/useDateAvailability';
 import { DOUBLE_BOOKING_MESSAGE, isDateFullyBooked } from '@/lib/availability';
 import { useAuth } from '@/hooks/useAuth';
@@ -78,7 +94,11 @@ export function BookReservation() {
   const [themeId, setThemeId] = useState<number>(initialThemeId);
   const [packageId, setPackageId] = useState<number>(initialPkgId);
   // Kept as text so the field can be cleared while typing (a number state forced a stuck "0").
-  const [guestInput, setGuestInput] = useState<string>(String(MIN_GUEST_COUNT));
+  // A pax estimate from the dashboard arrives as ?pax=150.
+  const [guestInput, setGuestInput] = useState<string>(() => {
+    const pax = (searchParams.get('pax') || '').replace(/\D/g, '').slice(0, 4);
+    return pax || String(MIN_GUEST_COUNT);
+  });
   const guestCount = guestInput === '' ? 0 : parseInt(guestInput, 10);
   const [guestTouched, setGuestTouched] = useState(false);
   const [paxPopup, setPaxPopup] = useState<string | null>(null);
@@ -102,6 +122,11 @@ export function BookReservation() {
   const [eventTime, setEventTime] = useState<string>('16:00');
   const [venueAddress, setVenueAddress] = useState<string>('');
   const [specialRequests, setSpecialRequests] = useState<string>('');
+  const [serviceHours, setServiceHours] = useState<number>(INCLUDED_SERVICE_HOURS);
+  // Servers on top of the ones the package includes for the guest count.
+  const [extraServers, setExtraServers] = useState<number>(0);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsOpen, setTermsOpen] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -232,8 +257,114 @@ export function BookReservation() {
     return sum + (item ? item.rate_per_unit * qty : 0);
   }, 0);
 
-  const grandTotal = packageTotal + rentalsTotal;
-  const requiredDownpayment = grandTotal * 0.5;
+  const baseServers = includedServers(guestCount);
+  const maxExtraServers = Math.max(0, MAX_SERVERS - baseServers);
+  const safeExtraServers = Math.min(extraServers, maxExtraServers);
+  const serverCount = baseServers + safeExtraServers;
+  const hoursCost = extraHoursCost(serviceHours);
+  const serversCost = extraServersCost(serverCount, guestCount);
+
+  const grandTotal = packageTotal + rentalsTotal + hoursCost + serversCost;
+  const requiredDownpayment = Math.round(grandTotal * 0.5 * 100) / 100;
+  const paymentSchedule = eventDate
+    ? buildPaymentSchedule(grandTotal, todayKey(), eventDate)
+    : [];
+
+  // Lines for the running invoice, rebuilt on every change.
+  // Guests change in steps of 5 from the invoice (type an exact number in step 1).
+  const PAX_STEP = 5;
+  const stepGuests = (delta: number) => {
+    const base = guestCount || minGuestCount;
+    const next = Math.min(MAX_GUEST_COUNT, Math.max(minGuestCount, base + delta));
+    setGuestInput(String(next));
+    setGuestTouched(true);
+  };
+
+  const invoiceLines: InvoiceLine[] = [
+    {
+      id: 'package',
+      label: selectedPackage?.name || 'Catering package',
+      detail: `${formatCurrency(selectedPackage?.price_per_pax || 0)} × ${guestCount || 0} pax`,
+      amount: packageTotal,
+      stepper: {
+        value: guestCount || 0,
+        unit: 'pax',
+        step: PAX_STEP,
+        onIncrement: () => stepGuests(PAX_STEP),
+        onDecrement: () => stepGuests(-PAX_STEP),
+        canIncrement: guestCount < MAX_GUEST_COUNT,
+        canDecrement: guestCount > minGuestCount,
+      },
+    },
+    ...Object.entries(selectedRentals).map(([idStr, qty]): InvoiceLine => {
+      const id = Number(idStr);
+      const item = rentals.find(r => r.id === id);
+      const stock = item?.stock_quantity ?? qty;
+      return {
+        id: `rental-${id}`,
+        label: item?.name || 'Rental',
+        detail: `${formatCurrency(item?.rate_per_unit || 0)} × ${qty}`,
+        amount: (item?.rate_per_unit || 0) * qty,
+        stepper: {
+          value: qty,
+          unit: 'pcs',
+          onIncrement: () => updateRentalQty(id, 1),
+          onDecrement: () => updateRentalQty(id, -1),
+          canIncrement: qty < stock,
+          canDecrement: qty > 0,
+        },
+        onRemove: () => updateRentalQty(id, -qty),
+      };
+    }),
+    {
+      id: 'hours',
+      label: 'Hours of service',
+      detail:
+        hoursCost > 0
+          ? `${serviceHours - INCLUDED_SERVICE_HOURS} extra × ${formatCurrency(EXTRA_HOUR_RATE)}`
+          : `${INCLUDED_SERVICE_HOURS} hrs included`,
+      amount: hoursCost,
+      included: hoursCost === 0,
+      stepper: {
+        value: serviceHours,
+        unit: 'hrs',
+        onIncrement: () => setServiceHours(h => Math.min(SERVICE_HOUR_OPTIONS[SERVICE_HOUR_OPTIONS.length - 1], h + 1)),
+        onDecrement: () => setServiceHours(h => Math.max(INCLUDED_SERVICE_HOURS, h - 1)),
+        canIncrement: serviceHours < SERVICE_HOUR_OPTIONS[SERVICE_HOUR_OPTIONS.length - 1],
+        canDecrement: serviceHours > INCLUDED_SERVICE_HOURS,
+      },
+    },
+    {
+      id: 'servers',
+      label: 'Servers (waitstaff)',
+      detail:
+        serversCost > 0
+          ? `${baseServers} included + ${safeExtraServers} extra × ${formatCurrency(EXTRA_SERVER_RATE)}`
+          : `1 per ${GUESTS_PER_SERVER} guests included`,
+      amount: serversCost,
+      included: serversCost === 0,
+      stepper: {
+        value: serverCount,
+        unit: 'staff',
+        onIncrement: () => setExtraServers(Math.min(maxExtraServers, safeExtraServers + 1)),
+        onDecrement: () => setExtraServers(Math.max(0, safeExtraServers - 1)),
+        canIncrement: safeExtraServers < maxExtraServers,
+        canDecrement: safeExtraServers > 0,
+      },
+    },
+  ];
+
+  // Rentals were already chosen in step 3; let customers jump back to add more.
+  const invoiceFooter =
+    step > 3 ? (
+      <button
+        type="button"
+        onClick={() => goToStep(3)}
+        className="inline-flex items-center gap-1 text-xs font-semibold text-gold-dark hover:underline"
+      >
+        <Plus className="h-3.5 w-3.5" aria-hidden="true" /> Add rentals & add-ons
+      </button>
+    ) : undefined;
 
   // Rental quantity helpers
   const updateRentalQty = (rentalId: number, delta: number) => {
@@ -266,6 +397,14 @@ export function BookReservation() {
     if (step === 1) {
       if (!packageId) {
         setErrorMessage('Please select a catering package.');
+        return;
+      }
+      if (guestCountError || !isValidGuestCount(guestCount)) {
+        setGuestTouched(true);
+        setPaxPopup(
+          guestCountError ||
+            `Guest count must be between ${MIN_GUEST_COUNT} and ${MAX_GUEST_COUNT} pax.`
+        );
         return;
       }
       setStep(MENU_STEP);
@@ -304,6 +443,7 @@ export function BookReservation() {
         // Offline check failed; the save step re-checks and the database blocks overlaps.
       }
       if (guestCountError || !isValidGuestCount(guestCount)) {
+        setStep(1);
         setGuestTouched(true);
         setPaxPopup(
           guestCountError ||
@@ -335,8 +475,13 @@ export function BookReservation() {
       return;
     }
 
+    if (!termsAccepted) {
+      setErrorMessage('Please read and agree to the Terms & Conditions before submitting.');
+      return;
+    }
+
     if (guestCountError || !isValidGuestCount(guestCount)) {
-      setStep(DETAILS_STEP);
+      setStep(1);
       setGuestTouched(true);
       setPaxPopup(
         guestCountError ||
@@ -368,6 +513,9 @@ export function BookReservation() {
         total_amount: grandTotal,
         rentals: rentalsList,
         menu_selection: chosenMenu,
+        service_hours: serviceHours,
+        server_count: serverCount,
+        terms_accepted: termsAccepted,
       });
 
       navigate('/customer/reservations', {
@@ -386,7 +534,7 @@ export function BookReservation() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-6xl mx-auto space-y-6">
       {/* Wizard Step Progress */}
       <nav aria-label="Booking progress" className="rounded-xl border border-border bg-white p-4 shadow-card">
         <p className="mb-3 text-center text-xs font-semibold text-text-muted sm:hidden">
@@ -438,15 +586,85 @@ export function BookReservation() {
         </div>
       )}
 
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
+      {/* Running invoice: sidebar on desktop, above the step on phones/tablets. */}
+      <aside className="lg:order-2 lg:sticky lg:top-4">
+        <details className="group lg:hidden rounded-xl border border-border bg-white shadow-card" >
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm">
+            <span className="font-semibold text-ink">Running Invoice</span>
+            <span className="flex items-center gap-2">
+              <span className="font-num font-extrabold tabular-nums text-ink">{formatCurrency(grandTotal)}</span>
+              <ChevronRight className="h-4 w-4 text-text-muted transition-transform group-open:rotate-90" aria-hidden="true" />
+            </span>
+          </summary>
+          <RunningInvoice lines={invoiceLines} total={grandTotal} heading={`${guestCount || 0} pax`} footerAction={invoiceFooter} className="rounded-none border-0 border-t shadow-none" />
+        </details>
+        <RunningInvoice
+          lines={invoiceLines}
+          total={grandTotal}
+          heading={`${selectedTheme?.name || 'Event'} · ${guestCount || 0} pax`}
+          footerAction={invoiceFooter}
+          className="hidden lg:block"
+        />
+      </aside>
+
+      <div className="min-w-0 space-y-6 lg:order-1">
       {/* Step 1: Theme & Package Selection */}
       {step === 1 && (
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Step 1: Choose Event Motif & Catering Package</CardTitle>
-              <p className="text-xs text-text-muted">Select your desired styling and menu package.</p>
+              <CardTitle>Step 1: Choose Event Motif, Guests & Catering Package</CardTitle>
+              <p className="text-xs text-text-muted">
+                Enter your number of guests first. Every package price is calculated for you automatically.
+              </p>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Guest count drives every price on this page. */}
+              <div className="rounded-xl border border-gold/40 bg-gold-light/20 p-4">
+                <label htmlFor="guest-count" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
+                  Number of Guests (Pax)
+                </label>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                  <div className="sm:w-48">
+                    <Input id="guest-count"
+                      ref={guestInputRef}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      autoComplete="off"
+                      required
+                      value={guestInput}
+                      onChange={e => handleGuestChange(e.target.value)}
+                      onBlur={() => setGuestTouched(true)}
+                      placeholder={`${minGuestCount}–${MAX_GUEST_COUNT}`}
+                      aria-invalid={guestTouched && !!guestCountError}
+                      aria-describedby="guest-count-help"
+                      className={`text-base font-bold ${
+                        guestTouched && guestCountError
+                          ? 'border-red-500 ring-2 ring-red-500/40 focus-visible:border-red-500 focus-visible:ring-red-500'
+                          : ''
+                      }`}
+                    />
+                  </div>
+                  <div className="text-xs text-text-muted sm:pt-2">
+                    <span
+                      id="guest-count-help"
+                      className={guestTouched && guestCountError ? 'font-semibold text-red-600' : ''}
+                    >
+                      {guestTouched && guestCountError
+                        ? guestCountError
+                        : `Between ${minGuestCount} and ${MAX_GUEST_COUNT} pax${selectedPackage ? ` for ${selectedPackage.name}` : ''}.`}
+                    </span>
+                    {!guestCountError && (
+                      <span className="mt-0.5 block font-semibold text-ink">
+                        {baseServers} servers included · {selectedPackage?.name}: {formatCurrency(packageTotal)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* Theme Grid */}
               <div>
                 <p id="theme-label" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-3">
@@ -507,6 +725,12 @@ export function BookReservation() {
                           {formatCurrency(pkg.price_per_pax)}
                           <span className="text-xs font-sans font-normal text-text-muted"> / head</span>
                         </div>
+                        {guestCount > 0 && (
+                          <p className="mt-1 text-xs text-text-muted">
+                            × {guestCount} pax ={' '}
+                            <span className="font-bold text-ink">{formatCurrency(pkg.price_per_pax * guestCount)}</span>
+                          </p>
+                        )}
                         <p className="mt-3 text-sm text-text-muted leading-relaxed">
                           {pkg.description}
                         </p>
@@ -828,7 +1052,7 @@ export function BookReservation() {
           <CardHeader>
             <CardTitle>Step 4: Event Schedule & Venue Information</CardTitle>
             <p className="text-xs text-text-muted">
-              Enter the date, call time, venue address, and guest headcount.
+              Enter the date, serving time, hours of service, servers, and venue address.
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -872,39 +1096,71 @@ export function BookReservation() {
               </div>
 
               <div>
-                <label htmlFor="guest-count" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
-                  Guest Count (Pax)
+                <label htmlFor="service-hours" className="block text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5">
+                  Hours of Service
                 </label>
-                <Input id="guest-count"
-                  ref={guestInputRef}
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  autoComplete="off"
-                  required
-                  value={guestInput}
-                  onChange={e => handleGuestChange(e.target.value)}
-                  onBlur={() => setGuestTouched(true)}
-                  placeholder={`${minGuestCount}–${MAX_GUEST_COUNT}`}
-                  aria-invalid={guestTouched && !!guestCountError}
-                  aria-describedby="guest-count-help"
-                  className={
-                    guestTouched && guestCountError
-                      ? 'border-red-500 ring-2 ring-red-500/40 focus-visible:border-red-500 focus-visible:ring-red-500'
-                      : undefined
-                  }
-                />
-                <span
-                  id="guest-count-help"
-                  className={`mt-1 block text-[11px] ${guestTouched && guestCountError ? 'font-semibold text-red-600' : 'text-text-muted'}`}
+                <select
+                  id="service-hours"
+                  value={serviceHours}
+                  onChange={e => setServiceHours(Number(e.target.value))}
+                  className="h-10 w-full rounded-md border border-border bg-white px-3 text-sm text-ink focus-visible:border-gold focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gold"
                 >
-                  {guestTouched && guestCountError
-                    ? guestCountError
-                    : `Guest count must be between ${minGuestCount} and ${MAX_GUEST_COUNT} pax${
-                        selectedPackage ? ` for ${selectedPackage.name}` : ''
-                      }.`}
+                  {SERVICE_HOUR_OPTIONS.map(h => (
+                    <option key={h} value={h}>
+                      {h} hours
+                      {h === INCLUDED_SERVICE_HOURS
+                        ? ' (included)'
+                        : ` (+${formatCurrency(extraHoursCost(h))})`}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-[11px] text-text-muted">
+                  Service from {formatTime(eventTime)} to {formatTime(serviceEndTime(eventTime, serviceHours))}.{' '}
+                  {INCLUDED_SERVICE_HOURS} hrs included; extra hours {formatCurrency(EXTRA_HOUR_RATE)}/hr.
                 </span>
               </div>
+            </div>
+
+            <div className="rounded-lg border border-border bg-cream/40 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <span id="servers-label" className="block text-xs font-bold uppercase tracking-wider text-text-muted">
+                    Number of Servers (Waitstaff)
+                  </span>
+                  <p className="mt-1 text-[11px] text-text-muted">
+                    {baseServers} servers included for {guestCount} guests (1 per {GUESTS_PER_SERVER}). Extra servers{' '}
+                    {formatCurrency(EXTRA_SERVER_RATE)} each.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5" role="group" aria-labelledby="servers-label">
+                  <button
+                    type="button"
+                    onClick={() => setExtraServers(Math.max(0, safeExtraServers - 1))}
+                    disabled={safeExtraServers === 0}
+                    aria-label="Remove one extra server"
+                    className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-white hover:bg-cream-dark disabled:opacity-30"
+                  >
+                    <Minus className="h-3.5 w-3.5" />
+                  </button>
+                  <span className="w-12 text-center font-serif text-lg font-bold text-ink" aria-live="polite">
+                    {serverCount}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setExtraServers(Math.min(maxExtraServers, safeExtraServers + 1))}
+                    disabled={safeExtraServers >= maxExtraServers}
+                    aria-label="Add one extra server"
+                    className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-white hover:bg-cream-dark disabled:opacity-30"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+              {safeExtraServers > 0 && (
+                <p className="mt-2 text-right text-xs font-semibold text-ink">
+                  +{safeExtraServers} extra = {formatCurrency(serversCost)}
+                </p>
+              )}
             </div>
 
             <div>
@@ -956,6 +1212,15 @@ export function BookReservation() {
                 </p>
                 <p className="text-text">
                   Expected Guests: <span className="font-semibold">{guestCount} pax</span>
+                </p>
+                <p className="text-text">
+                  Hours of Service:{' '}
+                  <span className="font-semibold">
+                    {serviceHours} hrs ({formatTime(eventTime)} – {formatTime(serviceEndTime(eventTime, serviceHours))})
+                  </span>
+                </p>
+                <p className="text-text">
+                  Servers: <span className="font-semibold">{serverCount} waitstaff</span>
                 </p>
                 {specialRequests && (
                   <p className="text-text-muted italic pt-1 border-t border-border">
@@ -1013,19 +1278,18 @@ export function BookReservation() {
 
             {/* Financial Contract Box */}
             <div className="rounded-xl bg-ink p-4 text-white space-y-3 sm:p-6">
-              <div className="flex items-center justify-between gap-4 text-sm text-cream/70">
-                <span>Catering Package Subtotal ({guestCount} pax):</span>
-                <span>{formatCurrency(packageTotal)}</span>
-              </div>
-              {rentalsTotal > 0 && (
-                <div className="flex items-center justify-between gap-4 text-sm text-cream/70">
-                  <span>Equipment Rentals Subtotal:</span>
-                  <span>{formatCurrency(rentalsTotal)}</span>
+              {invoiceLines.map(line => (
+                <div key={line.id || line.label} className="flex items-start justify-between gap-4 text-sm text-cream/70">
+                  <span>
+                    {line.label}
+                    {line.detail && <span className="block font-num text-[11px] tabular-nums text-cream/50">{line.detail}</span>}
+                  </span>
+                  <span className="font-num font-semibold tabular-nums">{line.included ? 'Included' : formatCurrency(line.amount)}</span>
                 </div>
-              )}
+              ))}
               <div className="border-t border-ink-muted/60 pt-3 flex flex-wrap items-center justify-between gap-x-4 text-base font-bold">
                 <span>Total Contract Amount:</span>
-                <span className="font-serif text-2xl text-white">
+                <span className="font-num text-2xl font-extrabold tabular-nums text-white">
                   {formatCurrency(grandTotal)}
                 </span>
               </div>
@@ -1034,10 +1298,68 @@ export function BookReservation() {
                   <ShieldCheck className="h-4 w-4 text-gold" />
                   <span>Required 50% Downpayment to Confirm:</span>
                 </div>
-                <span className="font-serif text-lg text-gold font-bold">
+                <span className="font-num text-lg font-extrabold tabular-nums text-gold">
                   {formatCurrency(requiredDownpayment)}
                 </span>
               </div>
+            </div>
+
+            {/* Payment schedule */}
+            {paymentSchedule.length > 0 && (
+              <div className="rounded-lg border border-border p-4 text-xs">
+                <span className="font-bold uppercase text-text-muted">Payment Schedule</span>
+                <table className="mt-2 w-full text-left">
+                  <thead className="text-[11px] uppercase text-text-muted">
+                    <tr>
+                      <th className="py-1 font-semibold">Payment</th>
+                      <th className="py-1 font-semibold">Due date</th>
+                      <th className="py-1 text-right font-semibold">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {paymentSchedule.map(item => (
+                      <tr key={item.key}>
+                        <td className="py-2 font-semibold text-ink">{item.label}</td>
+                        <td className="py-2 text-text">On or before {formatDate(item.dueDate)}</td>
+                        <td className="py-2 text-right font-bold text-ink">{formatCurrency(item.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="mt-2 text-[11px] text-text-muted">
+                  Your date is reserved only after the down payment is verified. You may also pay the full amount at once.
+                </p>
+              </div>
+            )}
+
+            {/* Terms & conditions: shown in full, must be accepted */}
+            <div className="rounded-lg border border-border">
+              <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+                <span className="text-xs font-bold uppercase text-text-muted">Terms & Conditions</span>
+                <TermsLink onClick={() => setTermsOpen(true)} label="Open full view" />
+              </div>
+              <div className="max-h-64 overflow-y-auto px-4 py-3">
+                <TermsContent />
+              </div>
+              <label
+                className={`flex cursor-pointer items-start gap-3 border-t px-4 py-3 text-sm ${
+                  termsAccepted ? 'border-emerald-200 bg-emerald-50' : 'border-border bg-cream/40'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={e => {
+                    setTermsAccepted(e.target.checked);
+                    setErrorMessage('');
+                  }}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#a9822f]"
+                />
+                <span className="text-text">
+                  I have read and agree to the Terms & Conditions, the payment schedule, and the total contract amount of{' '}
+                  <strong className="text-ink">{formatCurrency(grandTotal)}</strong>.
+                </span>
+              </label>
             </div>
           </CardContent>
         </Card>
@@ -1066,7 +1388,13 @@ export function BookReservation() {
           <Button
             type="button"
             variant="gold"
-            onClick={() => setShowConfirm(true)}
+            onClick={() => {
+              if (!termsAccepted) {
+                setErrorMessage('Please read and agree to the Terms & Conditions before submitting.');
+                return;
+              }
+              setShowConfirm(true);
+            }}
             disabled={submitting}
             className="gap-1.5 text-sm h-11 px-6 shadow-md"
           >
@@ -1074,6 +1402,10 @@ export function BookReservation() {
           </Button>
         )}
       </div>
+      </div>
+      </div>
+
+      <TermsDialog open={termsOpen} onOpenChange={setTermsOpen} onAgree={() => setTermsAccepted(true)} />
 
       <Dialog
         open={paxPopup !== null}

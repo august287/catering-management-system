@@ -135,6 +135,12 @@ export interface Reservation {
   special_requests?: string | null;
   /** Dishes the customer chose within their package allowance. */
   menu_selection?: MenuSelectionItem[] | null;
+  /** Hours of buffet service booked (migration 019). */
+  service_hours?: number | null;
+  /** Number of servers / waitstaff booked (migration 019). */
+  server_count?: number | null;
+  /** When the customer agreed to the terms & conditions (migration 019). */
+  terms_accepted_at?: string | null;
   total_amount: number;
   status: ReservationStatus;
   created_at: string;

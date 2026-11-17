@@ -313,6 +313,15 @@ export function Reservations() {
                   {formatDate(selectedRes.event_date)} at {formatTime(selectedRes.event_time)}
                 </p>
                 <p className="text-text-muted">Expected Guests: {selectedRes.guest_count} pax</p>
+                {selectedRes.service_hours && (
+                  <p className="text-text-muted">Hours of Service: {selectedRes.service_hours} hrs</p>
+                )}
+                {selectedRes.server_count && (
+                  <p className="text-text-muted">Servers: {selectedRes.server_count} waitstaff</p>
+                )}
+                {selectedRes.terms_accepted_at && (
+                  <p className="text-text-muted">Terms accepted: {formatDate(selectedRes.terms_accepted_at)}</p>
+                )}
                 <p className="text-text-muted">Theme: {selectedTheme?.name || 'Standard'}</p>
               </div>
             </div>

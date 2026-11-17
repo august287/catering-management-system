@@ -230,3 +230,65 @@ export function BookingsBarChart({ data }: { data: BarPoint[] }) {
     </div>
   );
 }
+// --- Comparison chart -------------------------------------------------------
+
+/** Two-series palette (validated: CVD ΔE ≥ 19, contrast ≥ 3:1 on the light surface). */
+export const COMPARE_COLORS = ['#a9822f', '#3b6fb6'] as const;
+
+interface CompareSeries {
+  key: string;
+  name: string;
+}
+
+/**
+ * Grouped bars comparing two measures that share one unit (one y-axis only).
+ * `format` sets how values read on the axis and tooltip.
+ */
+export function ComparisonBarChart({
+  data,
+  xKey,
+  series,
+  format = 'currency',
+  height = 280,
+}: {
+  data: Record<string, any>[];
+  xKey: string;
+  series: [CompareSeries, CompareSeries];
+  format?: 'currency' | 'percent' | 'count';
+  height?: number;
+}) {
+  const fmt = (v: number) =>
+    format === 'currency' ? formatCurrency(v) : format === 'percent' ? `${v.toFixed(1)}%` : String(v);
+  const tick = (v: number) =>
+    format === 'currency' ? `₱${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}` : format === 'percent' ? `${v}%` : String(v);
+  return (
+    <div className="w-full" style={{ height }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ top: 10, right: 10, left: -4, bottom: 0 }} barGap={2} barCategoryGap="22%">
+          <CartesianGrid strokeDasharray="3 3" stroke="#e8e3da" vertical={false} />
+          <XAxis
+            dataKey={xKey}
+            stroke="#6b6459"
+            tick={xKey === 'name' ? <PackageTick /> : { fontSize: 11, fill: '#6b6459' }}
+            height={xKey === 'name' ? 48 : 30}
+            interval={0}
+            tickLine={false}
+            axisLine={{ stroke: '#e8e3da' }}
+          />
+          <YAxis stroke="#6b6459" fontSize={11} tickLine={false} axisLine={false} tickFormatter={tick} width={56} />
+          <Tooltip
+            cursor={{ fill: 'rgba(169,130,47,0.08)' }}
+            formatter={(value: any, name: any) => [fmt(Number(value)), name]}
+            contentStyle={{ backgroundColor: '#17140f', borderColor: '#2a2620', borderRadius: '8px', padding: '8px 12px' }}
+            labelStyle={{ color: '#f5efe3', fontSize: '12px', fontWeight: 600 }}
+            itemStyle={{ color: '#f5efe3', fontSize: '12px' }}
+          />
+          <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px', color: '#3f3a32' }} />
+          {series.map((s, i) => (
+            <Bar key={s.key} dataKey={s.key} name={s.name} fill={COMPARE_COLORS[i]} radius={[4, 4, 0, 0]} maxBarSize={28} />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
