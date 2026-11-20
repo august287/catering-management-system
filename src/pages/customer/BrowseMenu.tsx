@@ -268,8 +268,16 @@ export function BrowseMenu() {
         <TabsContent value="rentals" className="pt-4 space-y-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {rentals.map(rental => (
-              <Card key={rental.id} className="p-5 flex flex-col justify-between">
-                <div>
+              <Card key={rental.id} className="overflow-hidden flex flex-col justify-between">
+                {rental.image_url && (
+                  <img
+                    src={rental.image_url}
+                    alt={rental.name}
+                    loading="lazy"
+                    className="h-40 w-full object-cover"
+                  />
+                )}
+                <div className="p-5 pb-0">
                   <span className="rounded bg-cream-dark px-2 py-0.5 text-[10px] font-bold uppercase text-text-muted">
                     {rental.category}
                   </span>
@@ -281,7 +289,7 @@ export function BrowseMenu() {
                     <span className="text-xs font-normal text-text-muted font-sans"> / piece</span>
                   </div>
                 </div>
-                <div className="mt-4 pt-3 border-t border-border flex items-center justify-between text-xs text-text-muted">
+                <div className="mx-5 mb-5 mt-4 pt-3 border-t border-border flex items-center justify-between text-xs text-text-muted">
                   <span>Stock capacity:</span>
                   <span className="font-bold text-ink">{rental.stock_quantity} available</span>
                 </div>

@@ -993,7 +993,15 @@ export function BookReservation() {
                     key={rental.id}
                     className="flex items-center justify-between gap-3 rounded-lg border border-border bg-white p-4 shadow-xs"
                   >
-                    <div className="min-w-0">
+                    {rental.image_url && (
+                      <img
+                        src={rental.image_url}
+                        alt=""
+                        loading="lazy"
+                        className="h-16 w-16 shrink-0 rounded-md object-cover"
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
                       <h4 className="font-serif font-bold text-ink text-sm">{rental.name}</h4>
                       <p className="text-xs text-text-muted">
                         {formatCurrency(rental.rate_per_unit)} / piece

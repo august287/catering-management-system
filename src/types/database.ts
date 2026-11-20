@@ -111,6 +111,7 @@ export interface RentalItem {
   rate_per_unit: number;
   stock_quantity: number;
   is_available: boolean;
+  image_url?: string | null;
 }
 
 export interface ReservationRental {

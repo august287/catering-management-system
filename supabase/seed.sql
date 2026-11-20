@@ -280,17 +280,19 @@ values
 on conflict (id) do update set name = excluded.name, price_per_pax = excluded.price_per_pax, min_pax = excluded.min_pax;
 
 -- 6. Rental Items
-insert into rental_items (id, name, category, rate_per_unit, stock_quantity, is_available)
+alter table public.rental_items add column if not exists image_url text;
+
+insert into rental_items (id, name, category, rate_per_unit, stock_quantity, is_available, image_url)
 values
-  (1, 'Tiffany Gold Chairs', 'Seating', 85.00, 350, true),
-  (2, 'Round Banquet Tables (10-Seater)', 'Tables', 350.00, 45, true),
-  (3, 'Stainless Roll-Top Chafing Dish', 'Food Service', 250.00, 40, true),
-  (4, 'Full Drop Embroidered Table Linen', 'Linens', 120.00, 60, true),
-  (5, 'Spandex Chair Covers with Gold Satin Bow', 'Linens', 45.00, 400, true),
-  (6, 'Cocktail Highboy Tables with Spandex Cover', 'Tables', 200.00, 25, true),
-  (7, 'Mobile Sound System with 2 Cordless Mics', 'Audio & Lights', 2500.00, 5, true),
-  (8, 'LED Uplighting Set (8 Warm Amber Pars)', 'Audio & Lights', 1800.00, 6, true)
-on conflict (id) do update set name = excluded.name, rate_per_unit = excluded.rate_per_unit;
+  (1, 'Monobloc Chairs', 'Seating', 85.00, 350, true, '/images/rentals/monobloc-chair.webp'),
+  (2, 'Banquet Table (7-Seater)', 'Tables', 350.00, 45, true, '/images/rentals/table-7-seater.webp'),
+  (3, 'Long Banquet Table (12-Seater)', 'Tables', 250.00, 40, true, '/images/rentals/long-table-12-seater.webp'),
+  (4, 'Full-Drop Embroidered Table Linen', 'Linens', 120.00, 60, true, '/images/rentals/full-drop-embroidered-table-linen.webp'),
+  (5, 'Spandex Chair Cover with Gold Satin Bow', 'Linens', 45.00, 400, true, '/images/rentals/spandex-chair-cover-gold-satin-bow.webp'),
+  (6, 'Cocktail Highboy Table with Spandex Cover', 'Tables', 200.00, 25, true, '/images/rentals/cocktail-highboy-table.webp'),
+  (7, 'Mobile Sound System with Two Cordless Microphones', 'Audio & Lights', 2500.00, 5, true, '/images/rentals/mobile-sound-system.webp'),
+  (8, 'LED Uplighting Set (8 Warm Amber Par Lights)', 'Audio & Lights', 1800.00, 6, true, '/images/rentals/led-uplighting-set.webp')
+on conflict (id) do update set name = excluded.name, category = excluded.category, rate_per_unit = excluded.rate_per_unit, image_url = excluded.image_url;
 
 -- 7. Realistic Reservations
 -- Some demo bookings predate the 100–200 pax rule. Lift the rule while seeding
